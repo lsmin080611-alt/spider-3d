@@ -95,6 +95,20 @@ let wallSlideCooldown = 0;
 let popups = [], sparks = [];
 let simTime = 0;
 
+// Step 2: 시네마틱 옥상 보행 -> 자유낙하 -> 첫 스윙 오프닝 상태 머신
+// openingPhase: 'ROOF_WAIT' | 'ROOF_WALK' | 'DROP_INTRO' | 'DROP_CATCH' | 'ACTIVE'
+const START_ROOF = { bx: 0.0, bz: -105.0, bw: 52.0, bd: 46.0, bh: 295.0 };
+const START_ROOF_LEDGE_Z = START_ROOF.bz + START_ROOF.bd * 0.5;
+let hasSeenRoofIntro = false;
+let openingPhase = 'ROOF_WAIT';
+let openingTimer = 0.0;
+let openingRetryDrop = false;
+let openingLetterbox = 1.0;
+let openingCamBlend = 1.0;
+let openCamX = 2.2, openCamY = 300.5, openCamZ = -116.5;
+let openingPoseMode = 'IDLE';
+let gameOverReason = '';
+
 // Inputs
 const keys = {};
 let joyX = 0, joyY = 0, swingHeld = false;
@@ -400,47 +414,63 @@ function getBlockData(gx, gz) {
   const isGrandAve = (gx === 0);
   const zoneType = blockSeed % 6;
 
-  let slots = [];
-  if (isGrandAve) {
-    const sideShift = ((gz & 1) === 0) ? 1 : -1;
-    slots = [[84.0 * sideShift, -25.0 * sideShift]];
-  } else if (zoneType === 0) {
-    slots = [[64.0, -56.0]];
-  } else if (zoneType === 1) {
-    slots = [[-62.0, -42.0], [58.0, 44.0]];
-  } else if (zoneType === 2) {
-    slots = [[-54.0, 26.0], [60.0, -32.0]];
+  if (gx === 0 && gz === 0) {
+    // Step 2: 중앙 대로 정면을 내려다보는 전용 출발 마천루 + 첫 스윙 앵커 보장용 좌/우 초고층 타워
+    buildings.push({
+      bx: START_ROOF.bx, bz: START_ROOF.bz, bw: START_ROOF.bw, bd: START_ROOF.bd, bh: START_ROOF.bh,
+      palIdx: 2, seed: 7777, hasSpire: false, hasPenthouse: false, hasWaterTower: false, awningIdx: 0, isStartRoof: true
+    });
+    buildings.push({
+      bx: 82.0, bz: 55.0, bw: 48.0, bd: 48.0, bh: 380.0,
+      palIdx: 0, seed: 10293, hasSpire: true, hasPenthouse: true, hasWaterTower: false, awningIdx: 1
+    });
+    buildings.push({
+      bx: -82.0, bz: 110.0, bw: 48.0, bd: 48.0, bh: 365.0,
+      palIdx: 3, seed: 20481, hasSpire: true, hasPenthouse: false, hasWaterTower: true, awningIdx: 2
+    });
   } else {
-    const jx1 = ((blockSeed >> 4) % 24) - 12;
-    const jz1 = ((blockSeed >> 7) % 24) - 12;
-    const jx2 = ((blockSeed >> 10) % 24) - 12;
-    const jz2 = ((blockSeed >> 13) % 24) - 12;
-    slots = [[-60.0 + jx1, -38.0 + jz1], [60.0 + jx2, 38.0 + jz2]];
-  }
-
-  for (let idx = 0; idx < slots.length; idx++) {
-    const ox = slots[idx][0], oz = slots[idx][1];
-    const hSeed = Math.abs(((gx * 73856093) ^ (gz * 19349663) ^ ((idx + 1) * 83492791)) | 0);
-
-    let bh;
-    if (zoneType === 1) {
-      bh = 285.0 + (hSeed % 156);
+    let slots = [];
+    if (isGrandAve) {
+      const sideShift = ((gz & 1) === 0) ? 1 : -1;
+      slots = [[84.0 * sideShift, -25.0 * sideShift]];
+    } else if (zoneType === 0) {
+      slots = [[64.0, -56.0]];
+    } else if (zoneType === 1) {
+      slots = [[-62.0, -42.0], [58.0, 44.0]];
     } else if (zoneType === 2) {
-      bh = 85.0 + (hSeed % 72);
-    } else if (isGrandAve) {
-      bh = 210.0 + (hSeed % 175);
+      slots = [[-54.0, 26.0], [60.0, -32.0]];
     } else {
-      bh = 145.0 + (hSeed % 195);
+      const jx1 = ((blockSeed >> 4) % 24) - 12;
+      const jz1 = ((blockSeed >> 7) % 24) - 12;
+      const jx2 = ((blockSeed >> 10) % 24) - 12;
+      const jz2 = ((blockSeed >> 13) % 24) - 12;
+      slots = [[-60.0 + jx1, -38.0 + jz1], [60.0 + jx2, 38.0 + jz2]];
     }
 
-    const bw = 40.0 + (hSeed % 18);
-    const bd = 40.0 + ((hSeed >> 3) % 18);
-    const palIdx = hSeed % 5;
-    const hasSpire = (hSeed % 3) === 0 || zoneType === 1;
-    const hasPenthouse = (hSeed % 2) === 0;
-    const hasWaterTower = ((hSeed >> 2) % 3) === 1;
-    const awningIdx = (hSeed >> 5) % PAL.AWNINGS.length;
-    buildings.push({ bx: cx + ox, bz: cz + oz, bw, bd, bh, palIdx, seed: hSeed, hasSpire, hasPenthouse, hasWaterTower, awningIdx });
+    for (let idx = 0; idx < slots.length; idx++) {
+      const ox = slots[idx][0], oz = slots[idx][1];
+      const hSeed = Math.abs(((gx * 73856093) ^ (gz * 19349663) ^ ((idx + 1) * 83492791)) | 0);
+
+      let bh;
+      if (zoneType === 1) {
+        bh = 285.0 + (hSeed % 156);
+      } else if (zoneType === 2) {
+        bh = 85.0 + (hSeed % 72);
+      } else if (isGrandAve) {
+        bh = 210.0 + (hSeed % 175);
+      } else {
+        bh = 145.0 + (hSeed % 195);
+      }
+
+      const bw = 40.0 + (hSeed % 18);
+      const bd = 40.0 + ((hSeed >> 3) % 18);
+      const palIdx = hSeed % 5;
+      const hasSpire = (hSeed % 3) === 0 || zoneType === 1;
+      const hasPenthouse = (hSeed % 2) === 0;
+      const hasWaterTower = ((hSeed >> 2) % 3) === 1;
+      const awningIdx = (hSeed >> 5) % PAL.AWNINGS.length;
+      buildings.push({ bx: cx + ox, bz: cz + oz, bw, bd, bh, palIdx, seed: hSeed, hasSpire, hasPenthouse, hasWaterTower, awningIdx });
+    }
   }
 
   // 2개 고도층 구름 (중고공 215~330m + 성층권 355~495m)
@@ -621,19 +651,70 @@ function spawnWave(waveNum) {
   addPopup('WAVE ' + waveNum + ' · ' + enemies.length + ' HOSTILES!', PAL.GOLD, 3);
 }
 
+function isOpeningCutscene() {
+  return openingPhase === 'ROOF_WAIT' || openingPhase === 'ROOF_WALK' || openingPhase === 'DROP_INTRO';
+}
+
+function isOpeningActive() {
+  return openingPhase !== 'ACTIVE';
+}
+
+function handleOpeningAnyInput() {
+  if (openingPhase !== 'ROOF_WAIT') return false;
+  hasSeenRoofIntro = true;
+  openingPhase = 'ROOF_WALK';
+  openingTimer = 0.0;
+  openingPoseMode = 'WALK_A';
+  swingHeld = false;
+  if (btnSwing) btnSwing.classList.remove('pressed', 'ready', 'perfect');
+  return true;
+}
+
+function completeOpeningCatch() {
+  if (openingPhase !== 'DROP_CATCH') return;
+  openingPhase = 'ACTIVE';
+  openingTimer = 0.0;
+  openingCamBlend = 0.0;
+  openingLetterbox = 0.0;
+  openingPoseMode = 'NONE';
+  runTimeRemaining = RUN_DURATION;
+  runTimerZeroTriggered = false;
+
+  const sinY = Math.sin(camYaw), cosY = Math.cos(camYaw);
+  if (py <= 95.0) {
+    addStylePoints(18, 4.4);
+    hitStopTimer = 0.048;
+    shakeMag = Math.max(shakeMag, 3.0);
+    vx += sinY * 18.0;
+    vz += cosY * 18.0;
+    spawnSparks(px, py, pz, PAL.GOLD, 16, 36);
+    addPopup('DAREBLITZ CATCH!!', PAL.GOLD, 2);
+  } else if (py <= 200.0) {
+    addStylePoints(10, 4.0);
+    hitStopTimer = 0.035;
+    shakeMag = Math.max(shakeMag, 2.0);
+    vx += sinY * 10.0;
+    vz += cosY * 10.0;
+    spawnSparks(px, py, pz, PAL.NEON_CYAN, 12, 28);
+    addPopup('SWEET CATCH!!', PAL.NEON_CYAN, 2);
+  } else {
+    addStylePoints(5, 3.6);
+    hitStopTimer = 0.025;
+    spawnSparks(px, py, pz, '#ffffff', 10, 24);
+    addPopup('SWING ON!!', '#ffffff', 2);
+  }
+  spawnWave(1);
+}
+
 function resetGame() {
-  px = 0.0; py = 124.0; pz = -60.0;
-  vx = 0.0; vy = 0.0; vz = 24.0;
   camYaw = 0.0;
   isSwinging = false;
   swingHeld = false;
   ax = 0; ay = 0; az = 0; ropeLen = 0;
   anchorSide = 1; lastAnchorSide = -1;
   swingTimer = 0; passedBottom = false;
-  peakYBeforeSwing = 124.0; swingMinY = 124.0;
   autoCatchAfterJump = false; groundLaunchTimer = 0;
   swingReattachCooldown = 0; swingWebShootTimer = 0; isRopeTaut = false;
-  camDist = 15.5; camLagYaw = 0.0; camPitch = -0.06; camRoll = 0.0; fovD = 175.0;
   flipAngle = 0.0; doingFlip = false; shakeMag = 0;
   inPerfectWindow = false; perfectGraceTimer = 0; hitStopTimer = 0;
   diveCharge = 0; isDiving = false; isGliding = false;
@@ -644,7 +725,9 @@ function resetGame() {
   auraTickTimer = 0; webZapTimer = 0; multiKillCount = 0; multiKillWindow = 0;
   afterimageTimer = 0; afterimages = [];
   hp = MAX_HP; invulnTimer = 0; damageFlash = 0; gameOver = false;
+  gameOverReason = '';
   wave = 1; kills = 0; waveClearDelay = 0;
+  enemies = []; projectiles = [];
   runTimeRemaining = RUN_DURATION;
   runTimerZeroTriggered = false;
   stylePoints = 0.0;
@@ -660,7 +743,33 @@ function resetGame() {
   currentStage = 0;
   resetAugments();
   setStageIndicator(0);
-  spawnWave(1);
+
+  // 안 B: 최초 실행은 옥상 대기(ROOF_WAIT) -> 보행 컷신, 재도전 시 난간 낙하 컷신(DROP_INTRO)부터 시작
+  if (!hasSeenRoofIntro) {
+    openingPhase = 'ROOF_WAIT';
+    openingRetryDrop = false;
+    openingTimer = 0.0;
+    openingPoseMode = 'IDLE';
+    openingLetterbox = 1.0;
+    openingCamBlend = 1.0;
+    px = 0.0; py = START_ROOF.bh + 2.1; pz = -106.0;
+    vx = 0.0; vy = 0.0; vz = 0.0;
+    openCamX = 2.2; openCamY = py + 3.4; openCamZ = pz - 10.5;
+    camDist = 11.2; camLagYaw = 0.0; camPitch = -0.10; camRoll = 0.0; fovD = 195.0;
+  } else {
+    openingPhase = 'DROP_INTRO';
+    openingRetryDrop = true;
+    openingTimer = 0.0;
+    openingPoseMode = 'SLIP';
+    openingLetterbox = 1.0;
+    openingCamBlend = 1.0;
+    px = 0.0; py = START_ROOF.bh + 0.6; pz = START_ROOF_LEDGE_Z + 1.2;
+    vx = 0.0; vy = -12.0; vz = 13.5;
+    openCamX = 0.0; openCamY = START_ROOF.bh + 5.8; openCamZ = START_ROOF_LEDGE_Z - 9.0;
+    camDist = 14.0; camLagYaw = 0.0; camPitch = -0.35; camRoll = 0.0; fovD = 205.0;
+  }
+  peakYBeforeSwing = py;
+  swingMinY = py;
 }
 
 function getInputs() {
@@ -900,6 +1009,8 @@ function hasObstacleBehindTarget(target, dirX, dirY, dirZ, bList) {
 function onStrikePress() {
   if (augmentDraftOpen) { confirmAugment(draftCursor); return; }
   if (gameOver) { resetGame(); return; }
+  if (handleOpeningAnyInput()) return;
+  if (isOpeningActive()) return;
   if (strikeCooldown > 0 || strikeMode !== 0) return;
 
   const aug = getAugStats();
@@ -1073,7 +1184,9 @@ function startWebSwing(bList, cList, fromGroundLaunch = false) {
     addPopup('CLOUD HOOK!', '#b8e4ff', 1);
   }
 
-  if (diveCharge >= 0.22) {
+  const wasOpeningDropCatch = (openingPhase === 'DROP_CATCH');
+
+  if (!wasOpeningDropCatch && diveCharge >= 0.22) {
     const aug = getAugStats();
     const lowBonus = py < 45.0 ? (1.0 + (45.0 - py) / 45.0 * 0.30) : 1.0;
     const softBoostCap = (BASE_SWING_MAX_SPD + 16.0) * aug.maxSpeedMult;
@@ -1088,6 +1201,11 @@ function startWebSwing(bList, cList, fromGroundLaunch = false) {
     addPopup('DIVE BOOST!', PAL.NEON_CYAN, 2);
     diveCharge = 0;
     isDiving = false;
+  } else if (wasOpeningDropCatch) {
+    diveCharge = 0;
+    isDiving = false;
+    // 아슬아슬한 저공 첫 캐치 시 도로를 멋지게 스쳐 지나가도록 최소 지상 여유 보장
+    ropeLen = Math.min(ropeLen, Math.max(24.0, ay - 8.5));
   }
 
   peakYBeforeSwing = Math.max(py, 115.0);
@@ -1101,6 +1219,9 @@ function startWebSwing(bList, cList, fromGroundLaunch = false) {
   isRopeTaut = false;
   doingFlip = false;
   spawnSparks(ax, ay, az, target.isCloud ? '#b8e4ff' : '#ffffff', 7, 22);
+  if (wasOpeningDropCatch) {
+    completeOpeningCatch();
+  }
   return true;
 }
 
@@ -1111,6 +1232,12 @@ function onSwingDown() {
   }
   if (gameOver) {
     resetGame();
+    return;
+  }
+  if (handleOpeningAnyInput()) {
+    return;
+  }
+  if (isOpeningCutscene()) {
     return;
   }
 
@@ -1940,15 +2067,24 @@ function updateCombat(dt, oldX, oldY, oldZ, bList, totalSpeed) {
 // 9. 3D CAMERA BASIS, NEAR-PLANE CLIPPING & RENDER HELPERS
 // =========================================================================
 function getCameraPos() {
-  if (!thirdPerson) return { cx: px, cy: py, cz: pz };
   const sinY = Math.sin(camLagYaw), cosY = Math.cos(camLagYaw);
   const rightX = cosY, rightZ = -sinY;
   const sideShift = strikeCamBlend * strikeCamSide * 3.2;
-  return {
+  const baseCam = thirdPerson ? {
     cx: px - sinY * camDist + rightX * sideShift,
     cy: Math.max(3.2, py + 3.8 - vy * 0.032 - strikeCamBlend * 1.4),
     cz: pz - cosY * camDist + rightZ * sideShift
-  };
+  } : { cx: px, cy: py, cz: pz };
+
+  if (openingCamBlend > 0.001) {
+    const b = Math.max(0.0, Math.min(1.0, openingCamBlend));
+    return {
+      cx: baseCam.cx + (openCamX - baseCam.cx) * b,
+      cy: baseCam.cy + (openCamY - baseCam.cy) * b,
+      cz: baseCam.cz + (openCamZ - baseCam.cz) * b
+    };
+  }
+  return baseCam;
 }
 
 function makeCamBasis(camPos, yaw, pitch, roll, d, sx, sy) {
@@ -2190,6 +2326,10 @@ function drawPC98Building(b, d2, cb, stageCfg, stagePat) {
 
   if (cb.cy > h) {
     drawClippedPoly3D([[x0, h, z0], [x1, h, z0], [x1, h, z1], [x0, h, z1]], cb, pat.roof, theme.frame);
+    if (b.isStartRoof) {
+      drawClippedLine3D([x0 + 1.5, h + 0.15, z1 - 0.6], [x1 - 1.5, h + 0.15, z1 - 0.6], cb, PAL.INDIGO_OUTLINE, 3);
+      drawClippedLine3D([x0 + 1.5, h + 0.15, z1 - 0.6], [x1 - 1.5, h + 0.15, z1 - 0.6], cb, PAL.GOLD, 1.5);
+    }
     if (b.hasPenthouse && d2 < 340 * 340) {
       const pw = hw * 0.44, pd = hd * 0.44, ph = h + 11.0;
       const px0 = b.bx - pw, px1 = b.bx + pw, pz0 = b.bz - pd, pz1 = b.bz + pd;
@@ -2496,7 +2636,16 @@ function drawSpiderManSprite(cb, totalSpeed) {
 
   let poseKey = 'DIVE';
   let spinThisPose = false;
-  if (strikeMode === 3) {
+  if (openingPhase === 'ROOF_WAIT') {
+    poseKey = 'ROOF_IDLE';
+  } else if (openingPhase === 'ROOF_WALK') {
+    poseKey = (openingPoseMode === 'WALK_B') ? 'ROOF_WALK_B' : 'ROOF_WALK_A';
+  } else if (openingPhase === 'DROP_INTRO') {
+    if (openingPoseMode === 'SLIP') poseKey = 'GROUND_JUMP';
+    else if (openingPoseMode === 'FLIP') poseKey = 'FLIP';
+    else if (openingPoseMode === 'POSE') poseKey = 'DROP_POSE';
+    else poseKey = 'DIVE';
+  } else if (strikeMode === 3) {
     const cm = CARTOON_MOTIONS[strikeMotionIdx];
     poseKey = cm.pose;
     spinThisPose = cm.spin && strikePhase === 'RUSH';
@@ -2626,6 +2775,189 @@ let lastTime = 0;
 let fpsFrames = 0, fpsAcc = 0;
 let afterimageSampleAcc = 0;
 
+// Step 2: 옥상 대기 -> 천천히 보행 -> 스르륵 낙하 & 카메라 지연 급추격 -> 공중 포즈 -> 다이브 컷신
+function updateOpeningCutscene(dt) {
+  if (!isOpeningCutscene()) return false;
+  simTime += dt;
+  openingTimer += dt;
+
+  if (openingPhase === 'ROOF_WAIT') {
+    px = 0.0; py = START_ROOF.bh + 2.1; pz = -106.0;
+    vx = 0.0; vy = 0.0; vz = 0.0;
+    openCamX = 2.2 + Math.sin(openingTimer * 0.9) * 0.35;
+    openCamY = py + 3.4 + Math.sin(openingTimer * 1.4) * 0.12;
+    openCamZ = pz - 10.5;
+    camYaw = 0.0; camLagYaw = 0.0; camPitch = -0.10; camRoll = 0.0; fovD = 195.0;
+    openingCamBlend = 1.0;
+    openingLetterbox = 1.0;
+    openingPoseMode = 'IDLE';
+    return true;
+  }
+
+  if (openingPhase === 'ROOF_WALK') {
+    const distToEdge = Math.max(0.0, START_ROOF_LEDGE_Z - pz);
+    const walkSpd = distToEdge < 6.5 ? (9.5 + (distToEdge / 6.5) * 4.5) : 14.0;
+    pz += walkSpd * dt;
+    vx = 0.0; vy = 0.0; vz = walkSpd;
+    py = START_ROOF.bh + 2.1 + Math.abs(Math.sin(openingTimer * 6.8)) * 0.24;
+    openingPoseMode = ((Math.floor(openingTimer * 4.6) & 1) === 0) ? 'WALK_A' : 'WALK_B';
+
+    const walkProg = Math.max(0.0, Math.min(1.0, (pz - (-106.0)) / (START_ROOF_LEDGE_Z - (-106.0))));
+    openCamX += (0.0 - openCamX) * 2.8 * dt;
+    openCamY += ((START_ROOF.bh + 5.6 + walkProg * 0.9) - openCamY) * 4.0 * dt;
+    openCamZ += ((pz - 11.2) - openCamZ) * 4.2 * dt;
+    camYaw = 0.0; camLagYaw = 0.0; camRoll = 0.0;
+    camPitch += ((-0.10 - walkProg * 0.24) - camPitch) * 4.0 * dt;
+    fovD += ((195.0 + walkProg * 12.0) - fovD) * 3.5 * dt;
+    openingCamBlend = 1.0;
+    openingLetterbox = 1.0;
+
+    if (pz >= START_ROOF_LEDGE_Z + 0.5) {
+      openingPhase = 'DROP_INTRO';
+      openingTimer = 0.0;
+      openingPoseMode = 'SLIP';
+      py = START_ROOF.bh + 0.8;
+      vx = 0.0; vy = -3.5; vz = 11.5;
+    }
+    return true;
+  }
+
+  if (openingPhase === 'DROP_INTRO') {
+    const introDur  = openingRetryDrop ? 0.94 : 1.50;
+    const lingerEnd = openingRetryDrop ? 0.22 : 0.38;
+    const flipStart = openingRetryDrop ? 0.34 : 0.56;
+    const poseStart = openingRetryDrop ? 0.56 : 0.88;
+    const diveStart = openingRetryDrop ? 0.72 : 1.14;
+    const t = openingTimer;
+
+    if (t < flipStart) {
+      openingPoseMode = 'SLIP';
+      doingFlip = false;
+      isDiving = false;
+      const slipG = openingRetryDrop ? 58.0 : (32.0 + (t / Math.max(0.01, flipStart)) * 26.0);
+      vy -= slipG * dt;
+      vz += (14.5 - vz) * 2.2 * dt;
+    } else if (t < poseStart) {
+      openingPoseMode = 'FLIP';
+      doingFlip = true;
+      isDiving = false;
+      flipAngle = ((t - flipStart) / Math.max(0.01, poseStart - flipStart)) * Math.PI * 2;
+      vy -= (openingRetryDrop ? 68.0 : 54.0) * dt;
+      vz += (17.5 - vz) * 2.5 * dt;
+      afterimageTimer = 0.14;
+    } else if (t < diveStart) {
+      openingPoseMode = 'POSE';
+      doingFlip = false;
+      flipAngle = 0.0;
+      isDiving = false;
+      vy -= (openingRetryDrop ? 62.0 : 50.0) * dt;
+      vz += (19.0 - vz) * 2.5 * dt;
+      afterimageTimer = 0.14;
+    } else {
+      openingPoseMode = 'DIVE';
+      doingFlip = false;
+      flipAngle = 0.0;
+      isDiving = true;
+      vy -= (openingRetryDrop ? 86.0 : 74.0) * dt;
+      vz += (22.5 - vz) * 4.0 * dt;
+      diveCharge = Math.min(0.42, diveCharge + dt * 1.0);
+    }
+
+    px += vx * dt;
+    py += vy * dt;
+    pz += vz * dt;
+    camYaw = 0.0;
+    camLagYaw = 0.0;
+
+    if (t < lingerEnd) {
+      // 카메라는 난간에 잠시 머물며 캐릭터가 발밑 심연으로 스르륵 떨어지는 거리감을 연출
+      openCamX += (0.0 - openCamX) * 2.2 * dt;
+      openCamY += ((START_ROOF.bh + 5.2) - openCamY) * 1.1 * dt;
+      openCamZ += ((START_ROOF_LEDGE_Z - 5.2) - openCamZ) * 1.3 * dt;
+      const lookDx = px - openCamX, lookDy = py - openCamY, lookDz = pz - openCamZ;
+      const targetPitch = Math.max(-1.15, Math.min(0.1, Math.atan2(lookDy, Math.hypot(lookDx, lookDz) || 1.0)));
+      camPitch += (targetPitch - camPitch) * 6.0 * dt;
+      camRoll += (0.0 - camRoll) * 6.0 * dt;
+      fovD += (208.0 - fovD) * 4.0 * dt;
+      openingCamBlend = 1.0;
+      openingLetterbox = 1.0;
+    } else {
+      // 뒤늦게 난간을 뛰어넘어 초고속으로 추격하는 다이내믹 낙하 카메라
+      const chaseT = Math.max(0.0, Math.min(1.0, (t - lingerEnd) / Math.max(0.01, introDur - lingerEnd)));
+      const inPoseBeat = (t >= poseStart && t < diveStart);
+      const inDiveBeat = (t >= diveStart);
+      const desCamX = px + (inPoseBeat ? 2.0 : 0.0);
+      const desCamY = py + (inPoseBeat ? 2.8 : 4.2) - vy * 0.032;
+      const desCamZ = pz - (inPoseBeat ? 11.4 : 16.5);
+      const chaseRate = 2.8 + chaseT * chaseT * 11.0;
+      openCamX += (desCamX - openCamX) * Math.min(1.0, chaseRate * dt);
+      openCamY += (desCamY - openCamY) * Math.min(1.0, chaseRate * dt);
+      openCamZ += (desCamZ - openCamZ) * Math.min(1.0, chaseRate * dt);
+
+      const lookDx = px - openCamX, lookDy = py - openCamY, lookDz = pz - openCamZ;
+      const lookPitch = Math.max(-1.12, Math.min(0.1, Math.atan2(lookDy, Math.hypot(lookDx, lookDz) || 1.0)));
+      const desPitch = inDiveBeat ? -0.52 : lookPitch;
+      camPitch += (desPitch - camPitch) * 7.5 * dt;
+
+      const desRoll = inPoseBeat ? 0.16 : 0.0;
+      camRoll += (desRoll - camRoll) * 8.0 * dt;
+
+      const desFov = inPoseBeat ? 182.0 : (inDiveBeat ? 156.0 : 138.0);
+      fovD += (desFov - fovD) * 7.0 * dt;
+
+      if (inDiveBeat) {
+        const diveProg = Math.max(0.0, Math.min(1.0, (t - diveStart) / Math.max(0.01, introDur - diveStart)));
+        openingLetterbox = 1.0 - diveProg;
+        openingCamBlend = 1.0 - diveProg;
+        camDist = 16.5;
+      } else {
+        openingLetterbox = 1.0;
+        openingCamBlend = 1.0;
+      }
+    }
+
+    if (afterimageTimer > 0) {
+      afterimageTimer -= dt;
+      afterimageSampleAcc += dt;
+      if (afterimageSampleAcc >= 0.04) {
+        afterimageSampleAcc = 0;
+        afterimages.push({
+          x: px, y: py, z: pz,
+          poseKey: openingPoseMode === 'POSE' ? 'DROP_POSE' : 'FLIP',
+          rot: doingFlip ? flipAngle : 0,
+          tone: afterimages.length & 1
+        });
+        if (afterimages.length > 3) afterimages.shift();
+      }
+    } else if (afterimages.length > 0) {
+      afterimageSampleAcc += dt;
+      if (afterimageSampleAcc >= 0.05) {
+        afterimageSampleAcc = 0;
+        afterimages.shift();
+      }
+    }
+
+    if (t >= introDur) {
+      openingPhase = 'DROP_CATCH';
+      openingTimer = 0.0;
+      openingCamBlend = 0.0;
+      openingLetterbox = 0.0;
+      doingFlip = false;
+      flipAngle = 0.0;
+      isDiving = true;
+      swingHeld = false;
+      openingPoseMode = 'NONE';
+      camDist = 16.5;
+      camLagYaw = 0.0;
+      camYaw = 0.0;
+      camRoll = 0.0;
+    }
+    return true;
+  }
+
+  return false;
+}
+
 function tick(now) {
   if (!lastTime) lastTime = now;
   let dt = (now - lastTime) / 1000.0;
@@ -2664,11 +2996,16 @@ function tick(now) {
   const { turn: turnInput, fwd: forwardInput } = getInputs();
   const { blocks: nearbyBlocks, buildings: nearbyBuildings, clouds: nearbyClouds, parks: nearbyParks } = getNearbyWorld();
 
-  if (!isFrozen) {
+  if (!isFrozen && updateOpeningCutscene(dt)) {
+    // 컷신(ROOF_WAIT / ROOF_WALK / DROP_INTRO) 중에는 본 게임 물리·전투·타이머 스킵
+  } else if (!isFrozen) {
     const aug = getAugStats();
     simTime += dt;
+    if (openingPhase === 'DROP_CATCH') {
+      openingTimer += dt;
+    }
 
-    if (runTimeRemaining > 0) {
+    if (openingPhase === 'ACTIVE' && runTimeRemaining > 0) {
       runTimeRemaining = Math.max(0.0, runTimeRemaining - dt);
       if (runTimeRemaining <= 0 && !runTimerZeroTriggered) {
         onRunTimerZero();
@@ -2713,15 +3050,17 @@ function tick(now) {
       peakFallSpeed = Math.max(peakFallSpeed, -vy);
     }
 
-    if (comboTimer > 0) {
-      comboTimer = Math.max(0.0, comboTimer - dt);
-    } else if (!isSwinging && strikeMode === 0) {
-      if (stylePoints > 0) {
-        stylePoints = Math.max(0.0, stylePoints - 14.0 * dt);
-        syncStageFromStyleRank(false);
-        if (stylePoints <= 0) swingCombo = 0;
-      } else if (swingCombo > 0) {
-        swingCombo = 0;
+    if (openingPhase === 'ACTIVE') {
+      if (comboTimer > 0) {
+        comboTimer = Math.max(0.0, comboTimer - dt);
+      } else if (!isSwinging && strikeMode === 0) {
+        if (stylePoints > 0) {
+          stylePoints = Math.max(0.0, stylePoints - 14.0 * dt);
+          syncStageFromStyleRank(false);
+          if (stylePoints <= 0) swingCombo = 0;
+        } else if (swingCombo > 0) {
+          swingCombo = 0;
+        }
       }
     }
 
@@ -2984,7 +3323,13 @@ function tick(now) {
       const fallT = vy < -4.0 ? Math.min(1.0, (-vy - 4.0) / 70.0) : 0.0;
       const fallGravMult = 1.40 + 0.35 * fallT;
 
-      if (py > 6.5 && forwardInput < -0.25) {
+      if (openingPhase === 'DROP_CATCH') {
+        // 자유낙하 캐치 구간: 글라이드 꼼수 차단, 다이브 낙하 유지 + 약 1.8초의 스윙 캐치 타이밍 창 제공
+        isGliding = false;
+        isDiving = true;
+        vy -= (effGrav * 0.92 + Math.max(0.0, forwardInput) * 24.0) * dt;
+        diveCharge = Math.min(0.65, diveCharge + 0.35 * dt);
+      } else if (py > 6.5 && forwardInput < -0.25) {
         isGliding = true;
         isDiving = false;
         diveCharge = Math.max(0.0, diveCharge - 0.35 * dt);
@@ -3064,7 +3409,22 @@ function tick(now) {
       strikeRushStack = 0;
       strikeRushTimer = 0.0;
 
-      if (strikeMode === 1) {
+      if (openingPhase === 'DROP_CATCH') {
+        // 마지막까지 첫 스윙을 걸지 못하고 지면 충돌 시 즉시 게임 오버
+        clearStrikeState();
+        isSwinging = false;
+        inPerfectWindow = false;
+        perfectGraceTimer = 0;
+        isRopeTaut = false;
+        vx = 0.0; vy = 0.0; vz = 0.0;
+        hp = 0;
+        damageFlash = 0.65;
+        shakeMag = 5.5;
+        gameOver = true;
+        gameOverReason = 'MISSED THE SWING!';
+        spawnSparks(px, 2.0, pz, PAL.CRIMSON, 18, 42);
+        addPopup('MISSED THE SWING!', PAL.CRIMSON, 2);
+      } else if (strikeMode === 1) {
         const slamDmg = 36 + Math.round(Math.min(50, Math.abs(vy) * 0.45));
         triggerShockwave(px, 3.0, pz, 55.0, slamDmg, PAL.ORANGE);
         clearStrikeState();
@@ -3103,7 +3463,9 @@ function tick(now) {
     const totalSpeed = Math.hypot(horizSpeed, vy);
 
     // Enemy AI, Gimmicks & Projectile Combat Update
-    updateCombat(dt, oldPx, oldPy, oldPz, nearbyBuildings, totalSpeed);
+    if (openingPhase === 'ACTIVE') {
+      updateCombat(dt, oldPx, oldPy, oldPz, nearbyBuildings, totalSpeed);
+    }
 
     // Visual Effects Update (Shockwaves, Lightning Bolts, Damage Numbers)
     for (let i = shockwaves.length - 1; i >= 0; i--) {
@@ -3299,6 +3661,18 @@ function tick(now) {
     btnSwing.classList.add('ready');
     swingBtnLabel.textContent = 'RETRY';
     swingBtnSub.textContent = 'TAP TO START';
+  } else if (openingPhase === 'ROOF_WAIT') {
+    btnSwing.classList.add('ready');
+    swingBtnLabel.textContent = 'START';
+    swingBtnSub.textContent = 'ANY BUTTON';
+  } else if (openingPhase === 'ROOF_WALK' || openingPhase === 'DROP_INTRO') {
+    swingBtnLabel.textContent = 'CUTSCENE';
+    swingBtnSub.textContent = 'WAIT...';
+  } else if (openingPhase === 'DROP_CATCH') {
+    if (py <= 95.0) btnSwing.classList.add('perfect');
+    else if (py <= 200.0) btnSwing.classList.add('ready');
+    swingBtnLabel.textContent = py <= 95.0 ? 'NOW!!' : 'CATCH!';
+    swingBtnSub.textContent = py <= 95.0 ? 'LAST CHANCE!' : 'PRESS SWING';
   } else if (isSwinging && (inPerfectWindow || perfectGraceTimer > 0)) {
     btnSwing.classList.add('perfect');
     swingBtnLabel.textContent = 'PERFECT!';
@@ -3319,7 +3693,7 @@ function tick(now) {
     const previewCase = strikeMode !== 0 ? strikeMode : classifyStrikeCase();
     const curSpdNow = Math.hypot(vx, vy, vz);
     const isInstantNow = (previewCase === 3 && curSpdNow >= STRIKE_NO_FREEZE_SPEED);
-    const hasLock = (!!homingTarget || previewCase === 1) && !gameOver && !augmentDraftOpen;
+    const hasLock = (!!homingTarget || previewCase === 1) && !gameOver && !augmentDraftOpen && openingPhase === 'ACTIVE';
     btnStrike.classList.remove('locked', 'case1', 'case3');
     if (augmentDraftOpen) {
       if (draftLockTimer > 0) {
@@ -3330,6 +3704,16 @@ function tick(now) {
         strikeBtnLabel.textContent = 'SELECT';
         strikeBtnSub.textContent = 'CONFIRM';
       }
+    } else if (openingPhase === 'ROOF_WAIT') {
+      btnStrike.classList.add('locked');
+      strikeBtnLabel.textContent = 'START';
+      strikeBtnSub.textContent = 'ANY BUTTON';
+    } else if (openingPhase === 'ROOF_WALK' || openingPhase === 'DROP_INTRO') {
+      strikeBtnLabel.textContent = 'CUTSCENE';
+      strikeBtnSub.textContent = 'LOCKED';
+    } else if (openingPhase === 'DROP_CATCH') {
+      strikeBtnLabel.textContent = 'STRIKE';
+      strikeBtnSub.textContent = 'SWING FIRST';
     } else if (hasLock) {
       if (previewCase === 1) btnStrike.classList.add('case1');
       else if (isInstantNow) btnStrike.classList.add('locked');
@@ -3573,7 +3957,7 @@ function tick(now) {
     if (sp) { ctx.fillStyle = s.col; ctx.fillRect(sp.x | 0, sp.y | 0, 2, 2); }
   }
 
-  const handPos = thirdPerson
+  const handPos = (thirdPerson || openingCamBlend > 0.01)
     ? drawSpiderManSprite(cb, totalSpeed)
     : { x: LCD_W * 0.5, y: LCD_H - 1, x1: null, y1: null, x2: null, y2: null };
 
@@ -3604,7 +3988,7 @@ function tick(now) {
       ctx.fillStyle = PAL.INDIGO_OUTLINE; ctx.fillRect((tipPt.x - 3) | 0, (tipPt.y - 3) | 0, 6, 6);
       ctx.fillStyle = p >= 1.0 ? PAL.GOLD : '#ffffff'; ctx.fillRect((tipPt.x - 2) | 0, (tipPt.y - 2) | 0, 4, 4);
     }
-  } else if (!isSwinging && strikeMode === 0) {
+  } else if (!isSwinging && strikeMode === 0 && !isOpeningCutscene()) {
     const target = findWallAnchor(turnInput, forwardInput, nearbyBuildings, nearbyClouds);
     if (target) {
       const tp = projectWorldPt(target.wx, target.wy, target.wz, cb);
@@ -3713,13 +4097,19 @@ function tick(now) {
       ctx.beginPath(); ctx.moveTo(edgeX, y0); ctx.lineTo(edgeX + dir * len, y0 + (Math.random() - 0.5) * 10); ctx.stroke();
     }
   }
-  if (isDiving) {
-    ctx.strokeStyle = diveCharge > 0.7 ? PAL.GOLD : PAL.NEON_CYAN;
+  if (isDiving || (openingPhase === 'DROP_INTRO' && openingTimer > (openingRetryDrop ? 0.22 : 0.38))) {
+    const isDropChase = (openingPhase === 'DROP_INTRO' || openingPhase === 'DROP_CATCH');
+    const lineCnt = isDropChase ? 9 : 6;
+    ctx.strokeStyle = (openingPhase === 'DROP_CATCH' && py <= 95.0)
+      ? PAL.GOLD
+      : (diveCharge > 0.7 ? PAL.GOLD : PAL.NEON_CYAN);
     ctx.lineWidth = 1;
-    for (let i = 0; i < 6; i++) {
-      const lx = 24 + Math.random() * (LCD_W - 48);
+    for (let i = 0; i < lineCnt; i++) {
+      const lx = isDropChase
+        ? ((i & 1) ? (8 + Math.random() * 68) : (LCD_W - 76 + Math.random() * 68))
+        : (24 + Math.random() * (LCD_W - 48));
       const ly = Math.random() * (LCD_H - 25);
-      ctx.beginPath(); ctx.moveTo(lx, ly); ctx.lineTo(lx, ly + 18 + diveCharge * 18); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(lx, ly); ctx.lineTo(lx, ly + 18 + (isDropChase ? 14 : diveCharge * 18)); ctx.stroke();
     }
   }
   if (totalSpeed > 82 || (strikeMode !== 0 && strikePhase === 'RUSH') || groundSkimIntensity > 0.4) {
@@ -3736,8 +4126,9 @@ function tick(now) {
     }
   }
 
-  if (strikeCamBlend > 0.08) {
-    const barH = Math.round(strikeCamBlend * 11);
+  const lbBlend = Math.max(strikeCamBlend, openingLetterbox);
+  if (lbBlend > 0.04) {
+    const barH = Math.round(lbBlend * 12);
     ctx.fillStyle = PAL.INDIGO_OUTLINE;
     ctx.fillRect(0, 0, LCD_W, barH);
     ctx.fillRect(0, LCD_H - barH, LCD_W, barH);
@@ -3749,7 +4140,7 @@ function tick(now) {
     ctx.strokeRect(3, 3, LCD_W - 6, LCD_H - 6);
   }
 
-  if (!augmentDraftOpen && !gameOver) {
+  if (!augmentDraftOpen && !gameOver && openingPhase === 'ACTIVE') {
     drawOffscreenEnemyMarkers(cb);
   }
 
@@ -3763,239 +4154,288 @@ function tick(now) {
     ctx.strokeRect(x + 0.5, y + 0.5, w - 1, h - 1);
   };
 
-  const hpCol = hp > 55 ? PAL.EMERALD : (hp > 25 ? PAL.GOLD : PAL.CRIMSON);
-  const hudBorder = strikeMode === 1 ? PAL.ORANGE : (strikeMode === 3 ? (isChainRush ? PAL.NEON_PINK : PAL.NEON_CYAN) : '#68b0f0');
-  drawPC98Box(4, 4, 114, 38, hudBorder);
+  if (!isOpeningCutscene()) {
+    const hpCol = hp > 55 ? PAL.EMERALD : (hp > 25 ? PAL.GOLD : PAL.CRIMSON);
+    const hudBorder = strikeMode === 1 ? PAL.ORANGE : (strikeMode === 3 ? (isChainRush ? PAL.NEON_PINK : PAL.NEON_CYAN) : '#68b0f0');
+    drawPC98Box(4, 4, 114, 38, hudBorder);
 
-  ctx.font = 'bold 8px Consolas, monospace';
-  ctx.fillStyle = hpCol;
-  ctx.fillText('HP' + String(hp).padStart(3, ' '), 7, 13);
-  ctx.fillStyle = '#20142a';
-  ctx.fillRect(36, 7, 77, 6);
-  ctx.fillStyle = hpCol;
-  ctx.fillRect(36, 7, Math.round((hp / MAX_HP) * 77), 6);
-  ctx.strokeStyle = '#cceeff';
-  ctx.strokeRect(35.5, 6.5, 78, 7);
-
-  const spdLabel = strikeMode === 1 ? 'C1!' : (strikeMode === 3 ? 'C3!' : (isGliding ? 'GLD' : 'SPD'));
-  ctx.fillStyle = strikeMode !== 0 ? hudBorder : (isGliding ? PAL.EMERALD : '#b8e4ff');
-  ctx.fillText(spdLabel, 7, 24);
-  const gLen = Math.min(77, ((totalSpeed / 180.0) * 77) | 0);
-  ctx.fillStyle = '#1c2440';
-  ctx.fillRect(36, 18, 77, 6);
-  ctx.fillStyle = strikeMode !== 0 ? hudBorder : (totalSpeed >= STRIKE_NO_FREEZE_SPEED ? PAL.NEON_CYAN : PAL.NEON_PINK);
-  ctx.fillRect(36, 18, gLen, 6);
-  ctx.fillStyle = '#ffffff';
-  ctx.fillRect(36 + Math.round((STRIKE_NO_FREEZE_SPEED / 180.0) * 77), 18, 1, 6);
-  ctx.strokeStyle = '#cceeff';
-  ctx.strokeRect(35.5, 17.5, 78, 7);
-
-  const altStr = String(py | 0).padStart(3, ' ');
-  const spdStr = String(totalSpeed | 0).padStart(3, ' ');
-  ctx.fillStyle = '#ffffff';
-  ctx.fillText('ALT:' + altStr + 'm SPD:' + spdStr, 7, 37);
-
-  // LV / XP 성장 게이지 (12픽 만렙 도달 시 MAX 금색 강조)
-  const isBuildMax = totalAugmentsPicked >= MAX_AUG_SLOTS * MAX_AUG_LEVEL;
-  const xpRatio = Math.max(0, Math.min(1, playerXp / Math.max(1, xpToNext)));
-  drawPC98Box(4, 44, 114, 11, isBuildMax ? PAL.GOLD : PAL.NEON_CYAN);
-  ctx.font = 'bold 7.5px Consolas, monospace';
-  ctx.fillStyle = PAL.GOLD;
-  ctx.fillText(isBuildMax ? 'MAX' : ('LV' + playerLevel), 7, 52);
-  ctx.fillStyle = '#18203c';
-  ctx.fillRect(28, 47, 85, 5);
-  ctx.fillStyle = isBuildMax ? PAL.GOLD : PAL.NEON_CYAN;
-  ctx.fillRect(28, 47, Math.round(xpRatio * 85), 5);
-  ctx.strokeStyle = isBuildMax ? PAL.GOLD : '#68b0f0';
-  ctx.strokeRect(27.5, 46.5, 86, 6);
-
-  if (diveCharge > 0.02) {
-    drawPC98Box(4, 57, 114, 10, diveCharge > 0.7 ? PAL.GOLD : PAL.NEON_CYAN);
-    ctx.fillStyle = '#cceeff';
-    ctx.font = 'bold 7px Consolas, monospace';
-    ctx.fillText('DIVE', 7, 64);
-    ctx.fillStyle = diveCharge > 0.7 ? PAL.GOLD : PAL.NEON_CYAN;
-    ctx.fillRect(28, 60, Math.round(diveCharge * 84), 4);
-  }
-
-  // 중앙 상단 6분(06:00) 카운트다운 타이머 박스
-  const timerWarn = runTimeRemaining <= 20.0 && runTimeRemaining > 0.0;
-  const timerBlink = timerWarn && ((Math.floor(performance.now() / 220) & 1) === 0);
-  const timerCol = runTimeRemaining <= 0.0 ? PAL.GOLD : (timerWarn ? (timerBlink ? '#ffffff' : PAL.CRIMSON) : (runTimeRemaining <= 60.0 ? PAL.GOLD : '#ffffff'));
-  const timerBorder = runTimeRemaining <= 0.0 ? PAL.GOLD : (timerWarn ? PAL.CRIMSON : (runTimeRemaining <= 60.0 ? PAL.GOLD : PAL.NEON_CYAN));
-  drawPC98Box(127, 4, 58, 15, timerBorder);
-  ctx.textAlign = 'center';
-  ctx.font = 'bold 10px Consolas, monospace';
-  ctx.fillStyle = timerCol;
-  ctx.fillText(formatRunTimer(runTimeRemaining), 156, 15);
-  ctx.textAlign = 'left';
-
-  drawEnemyRadarHUD();
-
-  // 우측 상단 컴팩트 웨이브·콤보·픽 정보 박스 (24px 높이로 축소해 우측 대형 랭크 엠블럼 공간 확보)
-  const rankInfo = STYLE_RANKS[styleRankIdx] || STYLE_RANKS[0];
-  const rankProgress = Math.max(0.0, Math.min(1.0, (stylePoints - rankInfo.minPts) / 20.0));
-  drawPC98Box(LCD_W - 122, 4, 106, 24, styleRankIdx >= 2 ? rankInfo.col : '#8fb8e6');
-  ctx.font = 'bold 8px Consolas, monospace';
-  ctx.fillStyle = PAL.NEON_CYAN;
-  ctx.fillText('W' + wave + ' FOES:' + String(enemies.length).padStart(2, ' ') + ' K:' + kills, LCD_W - 118, 13);
-  const pickTxt = overpowerStacks > 0
-    ? ('PWR+' + (overpowerStacks * 5) + '%')
-    : ('PK ' + Math.min(12, totalAugmentsPicked) + '/12');
-  ctx.fillStyle = swingCombo > 0 ? '#cceeff' : '#8fb8e6';
-  ctx.fillText('CMB x' + String(swingCombo).padEnd(2, ' ') + ' ' + pickTxt, LCD_W - 118, 23);
-
-  // 우측 중앙: DMC / 사미라 스타일 대형 알파벳 랭크 엠블럼 (320x170 초경량 스프라이트 + 원형 링 게이지)
-  if (!augmentDraftOpen && !gameOver) {
-    const cx = 274;
-    const cy = 62;
-    const ringR = 23;
-    const isSRank = styleRankIdx >= 4;
-
-    // 랭크업 탄성 팝업 스케일 / 강등 진동 / 액션 펄스
-    let sprScale = 1.24;
-    let shakeX = 0, shakeY = 0;
-    if (stylePopTimer > 0) {
-      const t = stylePopTimer / 0.34;
-      if (stylePopDir > 0) {
-        sprScale = 1.24 + t * 0.44;
-      } else {
-        shakeX = Math.round(((Math.floor(performance.now() / 40) & 1) ? 1 : -1) * 3 * t);
-        shakeY = Math.round(((Math.floor(performance.now() / 55) & 1) ? 1 : -1) * 2 * t);
-      }
-    } else if (stylePulseTimer > 0) {
-      sprScale = 1.24 + (stylePulseTimer / 0.14) * 0.10;
-    } else if (isSRank) {
-      // S랭크 각성 미세 고동
-      sprScale = 1.26 + Math.sin(simTime * 11.0) * 0.04;
-    }
-
-    const rcx = cx + shakeX;
-    const rcy = cy + shakeY;
-
-    // 1) 어두운 원형 백플레이트 + 외곽선
-    ctx.beginPath();
-    ctx.arc(rcx, rcy, ringR + 2, 0, Math.PI * 2);
-    ctx.fillStyle = stylePoints > 0 ? 'rgba(10, 14, 30, 0.78)' : 'rgba(10, 14, 30, 0.48)';
-    ctx.fill();
-    ctx.lineWidth = 1.5;
-    ctx.strokeStyle = PAL.INDIGO_OUTLINE;
-    ctx.stroke();
-
-    // 2) 외곽 트랙 링 + 시계 방향 스타일 랭크 게이지 아크
-    ctx.beginPath();
-    ctx.arc(rcx, rcy, ringR, 0, Math.PI * 2);
-    ctx.lineWidth = 3;
-    ctx.strokeStyle = '#1e2948';
-    ctx.stroke();
-
-    const arcRatio = isSRank ? Math.max(0.15, rankProgress) : rankProgress;
-    if (arcRatio > 0.01) {
-      ctx.beginPath();
-      ctx.arc(rcx, rcy, ringR, -Math.PI * 0.5, -Math.PI * 0.5 + Math.PI * 2 * arcRatio);
-      ctx.lineWidth = 3;
-      ctx.strokeStyle = rankInfo.col;
-      ctx.stroke();
-    }
-
-    // 3) 내부 콤보 유지 타이머 얇은 링 (시간 감쇠 직관 표시)
-    if (comboTimer > 0 && stylePoints > 0) {
-      const holdRatio = Math.max(0.0, Math.min(1.0, comboTimer / 4.6));
-      ctx.beginPath();
-      ctx.arc(rcx, rcy, ringR - 4, -Math.PI * 0.5, -Math.PI * 0.5 + Math.PI * 2 * holdRatio);
-      ctx.lineWidth = 1.5;
-      ctx.strokeStyle = isSRank ? PAL.CRIMSON : '#cceeff';
-      ctx.stroke();
-    }
-
-    // 4) 랭크업 순간 6방향 방사형 벡터 버스트 라인
-    if (stylePopTimer > 0 && stylePopDir > 0) {
-      const burstProg = 1.0 - (stylePopTimer / 0.34);
-      const rIn = ringR + 2 + burstProg * 4;
-      const rOut = ringR + 8 + burstProg * 8;
-      ctx.strokeStyle = rankInfo.col;
-      ctx.lineWidth = 1.5;
-      for (let bi = 0; bi < 6; bi++) {
-        const ang = (bi / 6) * Math.PI * 2 + 0.35;
-        ctx.beginPath();
-        ctx.moveTo(rcx + Math.cos(ang) * rIn, rcy + Math.sin(ang) * rIn);
-        ctx.lineTo(rcx + Math.cos(ang) * rOut, rcy + Math.sin(ang) * rOut);
-        ctx.stroke();
-      }
-    }
-
-    // 5) S랭크 전용 불꽃 도트 스파크 글린트 (ESP32-S3 초경량 fillRect)
-    if (isSRank) {
-      const tickPhase = Math.floor(performance.now() / 110);
-      for (let si = 0; si < 4; si++) {
-        const ang = ((tickPhase * 0.45) + si * (Math.PI * 0.5));
-        const sx = Math.round(rcx + Math.cos(ang) * (ringR + 3));
-        const sy = Math.round(rcy + Math.sin(ang) * (ringR + 3));
-        ctx.fillStyle = ((tickPhase + si) & 1) ? PAL.GOLD : PAL.ORANGE;
-        ctx.fillRect(sx - 1, sy - 1, 2, 2);
-      }
-    }
-
-    // 6) 사전 베이크 28x32 DMC/사미라 샤프 세리프 픽셀 알파벳 스프라이트 블릿
-    const rSpr = styleRankSprites[styleRankIdx];
-    if (rSpr) {
-      const dw = Math.round(rSpr.width * sprScale);
-      const dh = Math.round(rSpr.height * sprScale);
-      ctx.drawImage(rSpr, Math.round(rcx - dw * 0.5), Math.round(rcy - dh * 0.5 + 1), dw, dh);
-    }
-
-    // 7) 엠블럼 하단 스타일 태그라인(DISMAL/CRAZY!/BADASS!/AMAZING!/SAVAGE!!) & 화력 배율 뱃지
-    ctx.textAlign = 'center';
-    const wordTxt = rankInfo.word || ('RANK ' + rankInfo.label);
     ctx.font = 'bold 8px Consolas, monospace';
-    const wBoxW = 58;
-    const wBoxX = cx - (wBoxW >> 1);
-    ctx.fillStyle = '#0c1228';
-    ctx.fillRect(wBoxX, 88, wBoxW, 11);
-    ctx.strokeStyle = styleRankIdx >= 2 ? rankInfo.col : '#475569';
-    ctx.lineWidth = 1;
-    ctx.strokeRect(wBoxX + 0.5, 88.5, wBoxW - 1, 10);
-    ctx.fillStyle = rankInfo.col;
-    ctx.fillText(wordTxt, cx, 96);
+    ctx.fillStyle = hpCol;
+    ctx.fillText('HP' + String(hp).padStart(3, ' '), 7, 13);
+    ctx.fillStyle = '#20142a';
+    ctx.fillRect(36, 7, 77, 6);
+    ctx.fillStyle = hpCol;
+    ctx.fillRect(36, 7, Math.round((hp / MAX_HP) * 77), 6);
+    ctx.strokeStyle = '#cceeff';
+    ctx.strokeRect(35.5, 6.5, 78, 7);
 
-    // 화력 배율 뱃지 (고수 보상 직관 확인)
-    const dmgTxt = 'DMG ' + rankInfo.dmgMult.toFixed(2) + 'x';
-    ctx.fillStyle = '#0c1228';
-    ctx.fillRect(wBoxX, 100, wBoxW, 10);
-    ctx.strokeStyle = isSRank ? PAL.GOLD : '#334155';
-    ctx.strokeRect(wBoxX + 0.5, 100.5, wBoxW - 1, 9);
+    const spdLabel = strikeMode === 1 ? 'C1!' : (strikeMode === 3 ? 'C3!' : (isGliding ? 'GLD' : 'SPD'));
+    ctx.fillStyle = strikeMode !== 0 ? hudBorder : (isGliding ? PAL.EMERALD : '#b8e4ff');
+    ctx.fillText(spdLabel, 7, 24);
+    const gLen = Math.min(77, ((totalSpeed / 180.0) * 77) | 0);
+    ctx.fillStyle = '#1c2440';
+    ctx.fillRect(36, 18, 77, 6);
+    ctx.fillStyle = strikeMode !== 0 ? hudBorder : (totalSpeed >= STRIKE_NO_FREEZE_SPEED ? PAL.NEON_CYAN : PAL.NEON_PINK);
+    ctx.fillRect(36, 18, gLen, 6);
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(36 + Math.round((STRIKE_NO_FREEZE_SPEED / 180.0) * 77), 18, 1, 6);
+    ctx.strokeStyle = '#cceeff';
+    ctx.strokeRect(35.5, 17.5, 78, 7);
+
+    const altStr = String(py | 0).padStart(3, ' ');
+    const spdStr = String(totalSpeed | 0).padStart(3, ' ');
+    ctx.fillStyle = '#ffffff';
+    ctx.fillText('ALT:' + altStr + 'm SPD:' + spdStr, 7, 37);
+
+    // LV / XP 성장 게이지 (12픽 만렙 도달 시 MAX 금색 강조)
+    const isBuildMax = totalAugmentsPicked >= MAX_AUG_SLOTS * MAX_AUG_LEVEL;
+    const xpRatio = Math.max(0, Math.min(1, playerXp / Math.max(1, xpToNext)));
+    drawPC98Box(4, 44, 114, 11, isBuildMax ? PAL.GOLD : PAL.NEON_CYAN);
     ctx.font = 'bold 7.5px Consolas, monospace';
-    ctx.fillStyle = styleRankIdx >= 1 ? '#ffffff' : '#94a3b8';
-    ctx.fillText(dmgTxt, cx, 108);
+    ctx.fillStyle = PAL.GOLD;
+    ctx.fillText(isBuildMax ? 'MAX' : ('LV' + playerLevel), 7, 52);
+    ctx.fillStyle = '#18203c';
+    ctx.fillRect(28, 47, 85, 5);
+    ctx.fillStyle = isBuildMax ? PAL.GOLD : PAL.NEON_CYAN;
+    ctx.fillRect(28, 47, Math.round(xpRatio * 85), 5);
+    ctx.strokeStyle = isBuildMax ? PAL.GOLD : '#68b0f0';
+    ctx.strokeRect(27.5, 46.5, 86, 6);
+
+    if (diveCharge > 0.02) {
+      drawPC98Box(4, 57, 114, 10, diveCharge > 0.7 ? PAL.GOLD : PAL.NEON_CYAN);
+      ctx.fillStyle = '#cceeff';
+      ctx.font = 'bold 7px Consolas, monospace';
+      ctx.fillText('DIVE', 7, 64);
+      ctx.fillStyle = diveCharge > 0.7 ? PAL.GOLD : PAL.NEON_CYAN;
+      ctx.fillRect(28, 60, Math.round(diveCharge * 84), 4);
+    }
+
+    // 중앙 상단 6분(06:00) 카운트다운 타이머 박스
+    const timerWarn = runTimeRemaining <= 20.0 && runTimeRemaining > 0.0;
+    const timerBlink = timerWarn && ((Math.floor(performance.now() / 220) & 1) === 0);
+    const timerCol = runTimeRemaining <= 0.0 ? PAL.GOLD : (timerWarn ? (timerBlink ? '#ffffff' : PAL.CRIMSON) : (runTimeRemaining <= 60.0 ? PAL.GOLD : '#ffffff'));
+    const timerBorder = runTimeRemaining <= 0.0 ? PAL.GOLD : (timerWarn ? PAL.CRIMSON : (runTimeRemaining <= 60.0 ? PAL.GOLD : PAL.NEON_CYAN));
+    drawPC98Box(127, 4, 58, 15, timerBorder);
+    ctx.textAlign = 'center';
+    ctx.font = 'bold 10px Consolas, monospace';
+    ctx.fillStyle = timerCol;
+    ctx.fillText(formatRunTimer(runTimeRemaining), 156, 15);
     ctx.textAlign = 'left';
 
-    drawActiveAugmentsHUD(totalSpeed, isSwinging);
+    drawEnemyRadarHUD();
+
+    // 우측 상단 컴팩트 웨이브·콤보·픽 정보 박스 (24px 높이로 축소해 우측 대형 랭크 엠블럼 공간 확보)
+    const rankInfo = STYLE_RANKS[styleRankIdx] || STYLE_RANKS[0];
+    const rankProgress = Math.max(0.0, Math.min(1.0, (stylePoints - rankInfo.minPts) / 20.0));
+    drawPC98Box(LCD_W - 122, 4, 106, 24, styleRankIdx >= 2 ? rankInfo.col : '#8fb8e6');
+    ctx.font = 'bold 8px Consolas, monospace';
+    ctx.fillStyle = PAL.NEON_CYAN;
+    ctx.fillText('W' + wave + ' FOES:' + String(enemies.length).padStart(2, ' ') + ' K:' + kills, LCD_W - 118, 13);
+    const pickTxt = overpowerStacks > 0
+      ? ('PWR+' + (overpowerStacks * 5) + '%')
+      : ('PK ' + Math.min(12, totalAugmentsPicked) + '/12');
+    ctx.fillStyle = swingCombo > 0 ? '#cceeff' : '#8fb8e6';
+    ctx.fillText('CMB x' + String(swingCombo).padEnd(2, ' ') + ' ' + pickTxt, LCD_W - 118, 23);
+
+    // 우측 중앙: DMC / 사미라 스타일 대형 알파벳 랭크 엠블럼 (320x170 초경량 스프라이트 + 원형 링 게이지)
+    if (!augmentDraftOpen && !gameOver) {
+      const cx = 274;
+      const cy = 62;
+      const ringR = 23;
+      const isSRank = styleRankIdx >= 4;
+
+      // 랭크업 탄성 팝업 스케일 / 강등 진동 / 액션 펄스
+      let sprScale = 1.24;
+      let shakeX = 0, shakeY = 0;
+      if (stylePopTimer > 0) {
+        const t = stylePopTimer / 0.34;
+        if (stylePopDir > 0) {
+          sprScale = 1.24 + t * 0.44;
+        } else {
+          shakeX = Math.round(((Math.floor(performance.now() / 40) & 1) ? 1 : -1) * 3 * t);
+          shakeY = Math.round(((Math.floor(performance.now() / 55) & 1) ? 1 : -1) * 2 * t);
+        }
+      } else if (stylePulseTimer > 0) {
+        sprScale = 1.24 + (stylePulseTimer / 0.14) * 0.10;
+      } else if (isSRank) {
+        // S랭크 각성 미세 고동
+        sprScale = 1.26 + Math.sin(simTime * 11.0) * 0.04;
+      }
+
+      const rcx = cx + shakeX;
+      const rcy = cy + shakeY;
+
+      // 1) 어두운 원형 백플레이트 + 외곽선
+      ctx.beginPath();
+      ctx.arc(rcx, rcy, ringR + 2, 0, Math.PI * 2);
+      ctx.fillStyle = stylePoints > 0 ? 'rgba(10, 14, 30, 0.78)' : 'rgba(10, 14, 30, 0.48)';
+      ctx.fill();
+      ctx.lineWidth = 1.5;
+      ctx.strokeStyle = PAL.INDIGO_OUTLINE;
+      ctx.stroke();
+
+      // 2) 외곽 트랙 링 + 시계 방향 스타일 랭크 게이지 아크
+      ctx.beginPath();
+      ctx.arc(rcx, rcy, ringR, 0, Math.PI * 2);
+      ctx.lineWidth = 3;
+      ctx.strokeStyle = '#1e2948';
+      ctx.stroke();
+
+      const arcRatio = isSRank ? Math.max(0.15, rankProgress) : rankProgress;
+      if (arcRatio > 0.01) {
+        ctx.beginPath();
+        ctx.arc(rcx, rcy, ringR, -Math.PI * 0.5, -Math.PI * 0.5 + Math.PI * 2 * arcRatio);
+        ctx.lineWidth = 3;
+        ctx.strokeStyle = rankInfo.col;
+        ctx.stroke();
+      }
+
+      // 3) 내부 콤보 유지 타이머 얇은 링 (시간 감쇠 직관 표시)
+      if (comboTimer > 0 && stylePoints > 0) {
+        const holdRatio = Math.max(0.0, Math.min(1.0, comboTimer / 4.6));
+        ctx.beginPath();
+        ctx.arc(rcx, rcy, ringR - 4, -Math.PI * 0.5, -Math.PI * 0.5 + Math.PI * 2 * holdRatio);
+        ctx.lineWidth = 1.5;
+        ctx.strokeStyle = isSRank ? PAL.CRIMSON : '#cceeff';
+        ctx.stroke();
+      }
+
+      // 4) 랭크업 순간 6방향 방사형 벡터 버스트 라인
+      if (stylePopTimer > 0 && stylePopDir > 0) {
+        const burstProg = 1.0 - (stylePopTimer / 0.34);
+        const rIn = ringR + 2 + burstProg * 4;
+        const rOut = ringR + 8 + burstProg * 8;
+        ctx.strokeStyle = rankInfo.col;
+        ctx.lineWidth = 1.5;
+        for (let bi = 0; bi < 6; bi++) {
+          const ang = (bi / 6) * Math.PI * 2 + 0.35;
+          ctx.beginPath();
+          ctx.moveTo(rcx + Math.cos(ang) * rIn, rcy + Math.sin(ang) * rIn);
+          ctx.lineTo(rcx + Math.cos(ang) * rOut, rcy + Math.sin(ang) * rOut);
+          ctx.stroke();
+        }
+      }
+
+      // 5) S랭크 전용 불꽃 도트 스파크 글린트 (ESP32-S3 초경량 fillRect)
+      if (isSRank) {
+        const tickPhase = Math.floor(performance.now() / 110);
+        for (let si = 0; si < 4; si++) {
+          const ang = ((tickPhase * 0.45) + si * (Math.PI * 0.5));
+          const sx = Math.round(rcx + Math.cos(ang) * (ringR + 3));
+          const sy = Math.round(rcy + Math.sin(ang) * (ringR + 3));
+          ctx.fillStyle = ((tickPhase + si) & 1) ? PAL.GOLD : PAL.ORANGE;
+          ctx.fillRect(sx - 1, sy - 1, 2, 2);
+        }
+      }
+
+      // 6) 사전 베이크 28x32 DMC/사미라 샤프 세리프 픽셀 알파벳 스프라이트 블릿
+      const rSpr = styleRankSprites[styleRankIdx];
+      if (rSpr) {
+        const dw = Math.round(rSpr.width * sprScale);
+        const dh = Math.round(rSpr.height * sprScale);
+        ctx.drawImage(rSpr, Math.round(rcx - dw * 0.5), Math.round(rcy - dh * 0.5 + 1), dw, dh);
+      }
+
+      // 7) 엠블럼 하단 스타일 태그라인(DISMAL/CRAZY!/BADASS!/AMAZING!/SAVAGE!!) & 화력 배율 뱃지
+      ctx.textAlign = 'center';
+      const wordTxt = rankInfo.word || ('RANK ' + rankInfo.label);
+      ctx.font = 'bold 8px Consolas, monospace';
+      const wBoxW = 58;
+      const wBoxX = cx - (wBoxW >> 1);
+      ctx.fillStyle = '#0c1228';
+      ctx.fillRect(wBoxX, 88, wBoxW, 11);
+      ctx.strokeStyle = styleRankIdx >= 2 ? rankInfo.col : '#475569';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(wBoxX + 0.5, 88.5, wBoxW - 1, 10);
+      ctx.fillStyle = rankInfo.col;
+      ctx.fillText(wordTxt, cx, 96);
+
+      // 화력 배율 뱃지 (고수 보상 직관 확인)
+      const dmgTxt = 'DMG ' + rankInfo.dmgMult.toFixed(2) + 'x';
+      ctx.fillStyle = '#0c1228';
+      ctx.fillRect(wBoxX, 100, wBoxW, 10);
+      ctx.strokeStyle = isSRank ? PAL.GOLD : '#334155';
+      ctx.strokeRect(wBoxX + 0.5, 100.5, wBoxW - 1, 9);
+      ctx.font = 'bold 7.5px Consolas, monospace';
+      ctx.fillStyle = styleRankIdx >= 1 ? '#ffffff' : '#94a3b8';
+      ctx.fillText(dmgTxt, cx, 108);
+      ctx.textAlign = 'left';
+
+      drawActiveAugmentsHUD(totalSpeed, isSwinging);
+    }
+
+    for (let i = 0; i < popups.length; i++) {
+      const pop = popups[i];
+      ctx.font = 'bold 10px Consolas, monospace';
+      const tw = ctx.measureText(pop.text).width;
+      const pyText = 60 + i * 14;
+      drawPC98Box((LCD_W * 0.5 - tw * 0.5 - 5) | 0, pyText - 10, (tw + 10) | 0, 13, pop.color);
+      ctx.fillStyle = pop.color;
+      ctx.fillText(pop.text, (LCD_W * 0.5 - tw * 0.5) | 0, pyText);
+    }
+
+    drawPC98Box(LCD_W - 11, 18, 7, 134, '#b8e4ff');
+    ctx.fillStyle = PAL.CRIMSON;
+    ctx.fillRect(LCD_W - 10, 141, 5, 10);
+    const trackEnemy = strikeTarget || homingTarget;
+    if (trackEnemy) {
+      const eAltY = 149 - Math.min(1.0, trackEnemy.y / GAME_MAX_ALTITUDE) * 127;
+      ctx.fillStyle = PAL.NEON_PINK;
+      ctx.fillRect(LCD_W - 12, (eAltY - 1) | 0, 9, 3);
+    }
+    const altY = 149 - Math.min(1.0, py / GAME_MAX_ALTITUDE) * 127;
+    ctx.fillStyle = PAL.INDIGO_OUTLINE;
+    ctx.fillRect(LCD_W - 13, (altY - 3) | 0, 11, 6);
+    ctx.fillStyle = py < 24 ? PAL.GOLD : (py >= 300 ? PAL.NEON_CYAN : '#b8e4ff');
+    ctx.fillRect(LCD_W - 12, (altY - 2) | 0, 9, 4);
   }
 
-  for (let i = 0; i < popups.length; i++) {
-    const pop = popups[i];
-    ctx.font = 'bold 10px Consolas, monospace';
-    const tw = ctx.measureText(pop.text).width;
-    const pyText = 60 + i * 14;
-    drawPC98Box((LCD_W * 0.5 - tw * 0.5 - 5) | 0, pyText - 10, (tw + 10) | 0, 13, pop.color);
-    ctx.fillStyle = pop.color;
-    ctx.fillText(pop.text, (LCD_W * 0.5 - tw * 0.5) | 0, pyText);
-  }
+  // Step 2 오프닝 시네마틱 오버레이 & 자유낙하 스윙 타이밍 안내
+  if (!gameOver && !augmentDraftOpen) {
+    if (openingPhase === 'ROOF_WAIT') {
+      drawPC98Box(74, 16, 172, 16, PAL.GOLD);
+      ctx.textAlign = 'center';
+      ctx.font = 'bold 9.5px Consolas, monospace';
+      ctx.fillStyle = PAL.GOLD;
+      ctx.fillText('SPIDER 3D · MANHATTAN', LCD_W * 0.5, 27);
 
-  drawPC98Box(LCD_W - 11, 18, 7, 134, '#b8e4ff');
-  ctx.fillStyle = PAL.CRIMSON;
-  ctx.fillRect(LCD_W - 10, 141, 5, 10);
-  const trackEnemy = strikeTarget || homingTarget;
-  if (trackEnemy) {
-    const eAltY = 149 - Math.min(1.0, trackEnemy.y / GAME_MAX_ALTITUDE) * 127;
-    ctx.fillStyle = PAL.NEON_PINK;
-    ctx.fillRect(LCD_W - 12, (eAltY - 1) | 0, 9, 3);
+      if (Math.floor(performance.now() / 460) & 1) {
+        drawPC98Box(54, LCD_H - 32, 212, 16, PAL.NEON_CYAN);
+        ctx.font = 'bold 9px Consolas, monospace';
+        ctx.fillStyle = '#ffffff';
+        ctx.fillText('PRESS ANY BUTTON TO START', LCD_W * 0.5, LCD_H - 21);
+      }
+      ctx.textAlign = 'left';
+    } else if (openingPhase === 'DROP_CATCH') {
+      ctx.textAlign = 'center';
+      if (py <= 95.0) {
+        const fastBlink = (Math.floor(performance.now() / 130) & 1) === 0;
+        const borderCol = fastBlink ? PAL.GOLD : PAL.CRIMSON;
+        drawPC98Box(62, LCD_H - 42, 196, 26, borderCol);
+        ctx.font = 'bold 10.5px Consolas, monospace';
+        ctx.fillStyle = fastBlink ? PAL.GOLD : '#ffffff';
+        ctx.fillText('[ LAST CHANCE! SWING!! ]', LCD_W * 0.5, LCD_H - 29);
+        ctx.font = 'bold 7.5px Consolas, monospace';
+        ctx.fillStyle = PAL.CRIMSON;
+        ctx.fillText('DAREBLITZ BONUS · SPACE / SWING', LCD_W * 0.5, LCD_H - 19);
+      } else if (py <= 200.0) {
+        const blink = (Math.floor(performance.now() / 220) & 1) === 0;
+        drawPC98Box(78, LCD_H - 40, 164, 24, blink ? PAL.NEON_CYAN : '#ffffff');
+        ctx.font = 'bold 10.5px Consolas, monospace';
+        ctx.fillStyle = blink ? PAL.NEON_CYAN : '#ffffff';
+        ctx.fillText('[ SWING NOW! ]', LCD_W * 0.5, LCD_H - 27);
+        ctx.font = 'bold 7.5px Consolas, monospace';
+        ctx.fillStyle = '#cceeff';
+        ctx.fillText('PRESS SPACE / SWING BTN', LCD_W * 0.5, LCD_H - 18);
+      } else {
+        drawPC98Box(96, LCD_H - 32, 128, 15, '#68b0f0');
+        ctx.font = 'bold 8.5px Consolas, monospace';
+        ctx.fillStyle = '#b8e4ff';
+        ctx.fillText('GET READY TO SWING...', LCD_W * 0.5, LCD_H - 22);
+      }
+      ctx.textAlign = 'left';
+    }
   }
-  const altY = 149 - Math.min(1.0, py / GAME_MAX_ALTITUDE) * 127;
-  ctx.fillStyle = PAL.INDIGO_OUTLINE;
-  ctx.fillRect(LCD_W - 13, (altY - 3) | 0, 11, 6);
-  ctx.fillStyle = py < 24 ? PAL.GOLD : (py >= 300 ? PAL.NEON_CYAN : '#b8e4ff');
-  ctx.fillRect(LCD_W - 12, (altY - 2) | 0, 9, 4);
 
   if (augmentDraftOpen) {
     drawAugmentDraftUI(drawPC98Box);
@@ -4014,7 +4454,7 @@ function tick(now) {
     ctx.textAlign = 'center';
     ctx.font = 'bold 13px Consolas, monospace';
     ctx.fillStyle = PAL.CRIMSON;
-    ctx.fillText('SYSTEM DOWN!', LCD_W * 0.5, by + 20);
+    ctx.fillText(gameOverReason || 'SYSTEM DOWN!', LCD_W * 0.5, by + 20);
 
     const peakInfo = STYLE_RANKS[peakStyleRankIdx] || STYLE_RANKS[0];
     ctx.font = 'bold 9px Consolas, monospace';
@@ -4100,6 +4540,7 @@ function setupControls() {
 
   joyZone.addEventListener('pointerdown', (e) => {
     e.preventDefault();
+    if (handleOpeningAnyInput()) return;
     if (joyPointerId !== null) return;
     joyPointerId = e.pointerId;
     joyZone.setPointerCapture(e.pointerId);
@@ -4162,6 +4603,7 @@ function setupControls() {
       confirmAugment(idx);
       return;
     }
+    if (handleOpeningAnyInput()) return;
     if (gameOver) resetGame();
   });
 
@@ -4177,6 +4619,10 @@ function setupControls() {
         else if (e.code === 'Digit2' && draftChoices[1]) confirmAugment(1);
         else if (e.code === 'Digit3' && draftChoices[2]) confirmAugment(2);
         return;
+      }
+      if (openingPhase === 'ROOF_WAIT') {
+        const isSysKey = ['Tab', 'Escape', 'MetaLeft', 'MetaRight', 'AltLeft', 'AltRight', 'ControlLeft', 'ControlRight'].includes(e.code) || /^F\d+$/.test(e.code);
+        if (!isSysKey && handleOpeningAnyInput()) return;
       }
       if (e.code === 'Space') onSwingDown();
       else if (e.code === 'KeyE' || e.code === 'KeyF' || e.code === 'ShiftLeft' || e.code === 'ShiftRight') onStrikePress();

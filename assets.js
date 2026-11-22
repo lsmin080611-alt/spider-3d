@@ -815,6 +815,44 @@
         drawHead(api, 12, 8);
         return { handX: 19, handY: 5 };
       });
+
+      // === Step 2 Opening Rooftop Walk & Cinematic Freefall Poses ===
+      spideySprites.ROOF_IDLE = bakeSpideyPose((api) => {
+        api.drawLimb(10, 16, 9, 21, 1.5, 3, 4);  api.drawLimb(9, 21, 9, 26, 1.4, 1, 2);
+        api.drawLimb(14, 16, 15, 21, 1.5, 3, 4); api.drawLimb(15, 21, 15, 26, 1.4, 1, 2);
+        api.drawLimb(12, 10, 12, 16, 2.5, 3, 4); api.drawLimb(12, 9, 12, 14, 2.0, 1, 2);
+        api.drawLimb(9, 11, 7, 16, 1.3, 1, 2);   api.drawLimb(15, 11, 17, 16, 1.3, 1, 2);
+        drawHead(api, 12, 6);
+        return { handX: 17, handY: 16 };
+      });
+
+      spideySprites.ROOF_WALK_A = bakeSpideyPose((api) => {
+        api.drawLimb(10, 16, 8, 21, 1.5, 3, 4);  api.drawLimb(8, 21, 7, 26, 1.4, 1, 2);
+        api.drawLimb(14, 16, 16, 20, 1.5, 3, 4); api.drawLimb(16, 20, 17, 25, 1.4, 1, 2);
+        api.drawLimb(12, 10, 12, 16, 2.5, 3, 4); api.drawLimb(12, 9, 12, 14, 2.0, 1, 2);
+        api.drawLimb(9, 11, 6, 15, 1.3, 1, 2);   api.drawLimb(15, 11, 18, 17, 1.3, 1, 2);
+        drawHead(api, 12, 6);
+        return { handX: 18, handY: 17 };
+      });
+
+      spideySprites.ROOF_WALK_B = bakeSpideyPose((api) => {
+        api.drawLimb(10, 16, 8, 20, 1.5, 3, 4);  api.drawLimb(8, 20, 7, 25, 1.4, 1, 2);
+        api.drawLimb(14, 16, 16, 21, 1.5, 3, 4); api.drawLimb(16, 21, 17, 26, 1.4, 1, 2);
+        api.drawLimb(12, 10, 12, 16, 2.5, 3, 4); api.drawLimb(12, 9, 12, 14, 2.0, 1, 2);
+        api.drawLimb(9, 11, 6, 17, 1.3, 1, 2);   api.drawLimb(15, 11, 18, 15, 1.3, 1, 2);
+        drawHead(api, 12, 6);
+        return { handX: 18, handY: 15 };
+      });
+
+      spideySprites.DROP_POSE = bakeSpideyPose((api) => {
+        // Dramatic mid-air inverted/arched silhouette before snapping into dive
+        api.drawLimb(10, 14, 6, 10, 1.5, 3, 4);  api.drawLimb(6, 10, 5, 5, 1.4, 1, 2);
+        api.drawLimb(14, 14, 18, 11, 1.5, 3, 4); api.drawLimb(18, 11, 19, 6, 1.4, 1, 2);
+        api.drawLimb(12, 12, 12, 18, 2.5, 3, 4); api.drawLimb(12, 13, 12, 17, 2.0, 1, 2);
+        api.drawLimb(9, 16, 3, 19, 1.4, 1, 2);   api.drawLimb(15, 16, 21, 19, 1.4, 1, 2);
+        drawHead(api, 12, 20);
+        return { handX: 21, handY: 19 };
+      });
     }
 
     function bakePropSprites() {
