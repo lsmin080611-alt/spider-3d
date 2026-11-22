@@ -853,6 +853,24 @@
         drawHead(api, 12, 20);
         return { handX: 21, handY: 19 };
       });
+
+      spideySprites.DROP_HERO = bakeSpideyPose((api) => {
+        // Cut 4 Spider-Verse reverse up-angle close-up: arched freefall + bold eyes + backlit rim
+        api.drawLimb(10, 11, 6, 6, 1.6, 3, 4);   api.drawLimb(6, 6, 9, 2, 1.5, 1, 2);
+        api.drawLimb(14, 11, 18, 7, 1.6, 3, 4);  api.drawLimb(18, 7, 16, 2, 1.5, 1, 2);
+        api.drawLimb(12, 11, 12, 17, 2.7, 3, 4); api.drawLimb(12, 13, 12, 18, 2.2, 1, 2);
+        api.setPx(12, 15, 4); api.setPx(11, 15, 6); api.setPx(13, 15, 6);
+        api.drawLimb(9, 15, 4, 13, 1.5, 1, 2);   api.drawLimb(4, 13, 2, 18, 1.4, 1, 2);
+        api.drawLimb(15, 15, 20, 16, 1.5, 1, 2); api.drawLimb(20, 16, 22, 21, 1.4, 1, 2);
+        // Backlit rim highlights along arms & knees
+        api.setPx(5, 6, 7); api.setPx(19, 7, 7); api.setPx(3, 13, 6); api.setPx(21, 16, 6);
+        // Hero close-up inverted head with oversized expressive white eyes
+        api.fillDisk(12, 21, 3.4, 1, 2);
+        api.setPx(11, 23, 6); api.setPx(12, 23, 6);
+        api.setPx(9, 20, 5);  api.setPx(10, 20, 5); api.setPx(10, 21, 5); api.setPx(9, 21, 5);
+        api.setPx(14, 20, 5); api.setPx(15, 20, 5); api.setPx(14, 21, 5); api.setPx(15, 21, 5);
+        return { handX: 2, handY: 18 };
+      });
     }
 
     function bakePropSprites() {

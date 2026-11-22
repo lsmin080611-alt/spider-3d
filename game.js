@@ -95,18 +95,21 @@ let wallSlideCooldown = 0;
 let popups = [], sparks = [];
 let simTime = 0;
 
-// Step 2: 시네마틱 옥상 보행 -> 자유낙하 -> 첫 스윙 오프닝 상태 머신
+// Step 2: 5-Cut 영화적 옥상 보행 -> 구름 돌파 자유낙하 -> 역방향 공중 포즈 -> 첫 스윙 오프닝 상태 머신
 // openingPhase: 'ROOF_WAIT' | 'ROOF_WALK' | 'DROP_INTRO' | 'DROP_CATCH' | 'ACTIVE'
-const START_ROOF = { bx: 0.0, bz: -105.0, bw: 52.0, bd: 46.0, bh: 295.0 };
+const START_ROOF = { bx: 0.0, bz: -105.0, bw: 54.0, bd: 48.0, bh: 540.0 };
 const START_ROOF_LEDGE_Z = START_ROOF.bz + START_ROOF.bd * 0.5;
 let hasSeenRoofIntro = false;
 let openingPhase = 'ROOF_WAIT';
 let openingTimer = 0.0;
+let openingEdgePause = 0.0;
 let openingRetryDrop = false;
 let openingLetterbox = 1.0;
 let openingCamBlend = 1.0;
-let openCamX = 2.2, openCamY = 300.5, openCamZ = -116.5;
+let openCamX = 7.8, openCamY = 543.5, openCamZ = -110.5;
 let openingPoseMode = 'IDLE';
+let openingCloudRush = 0.0;
+let openingPoseRadial = 0.0;
 let gameOverReason = '';
 
 // Inputs
@@ -415,11 +418,14 @@ function getBlockData(gx, gz) {
   const zoneType = blockSeed % 6;
 
   if (gx === 0 && gz === 0) {
-    // Step 2: 중앙 대로 정면을 내려다보는 전용 출발 마천루 + 첫 스윙 앵커 보장용 좌/우 초고층 타워
-    buildings.push({
-      bx: START_ROOF.bx, bz: START_ROOF.bz, bw: START_ROOF.bw, bd: START_ROOF.bd, bh: START_ROOF.bh,
-      palIdx: 2, seed: 7777, hasSpire: false, hasPenthouse: false, hasWaterTower: false, awningIdx: 0, isStartRoof: true
-    });
+    // Step 2: 구름 위 540m 오프닝 전용 랜드마크 타워 (본 게임 ACTIVE 진입 후에는 자연스럽게 도심으로 정리)
+    if (openingPhase !== 'ACTIVE') {
+      buildings.push({
+        bx: START_ROOF.bx, bz: START_ROOF.bz, bw: START_ROOF.bw, bd: START_ROOF.bd, bh: START_ROOF.bh,
+        palIdx: 2, seed: 7777, hasSpire: false, hasPenthouse: false, hasWaterTower: false, awningIdx: 0, isStartRoof: true
+      });
+    }
+    // 첫 스윙 앵커 보장용 전방 좌/우 초고층 타워
     buildings.push({
       bx: 82.0, bz: 55.0, bw: 48.0, bd: 48.0, bh: 380.0,
       palIdx: 0, seed: 10293, hasSpire: true, hasPenthouse: true, hasWaterTower: false, awningIdx: 1
@@ -664,6 +670,7 @@ function handleOpeningAnyInput() {
   hasSeenRoofIntro = true;
   openingPhase = 'ROOF_WALK';
   openingTimer = 0.0;
+  openingEdgePause = 0.0;
   openingPoseMode = 'WALK_A';
   swingHeld = false;
   if (btnSwing) btnSwing.classList.remove('pressed', 'ready', 'perfect');
@@ -674,8 +681,11 @@ function completeOpeningCatch() {
   if (openingPhase !== 'DROP_CATCH') return;
   openingPhase = 'ACTIVE';
   openingTimer = 0.0;
+  openingEdgePause = 0.0;
   openingCamBlend = 0.0;
   openingLetterbox = 0.0;
+  openingCloudRush = 0.0;
+  openingPoseRadial = 0.0;
   openingPoseMode = 'NONE';
   runTimeRemaining = RUN_DURATION;
   runTimerZeroTriggered = false;
@@ -741,10 +751,13 @@ function resetGame() {
   wallSlideCooldown = 0;
   popups = []; sparks = [];
   currentStage = 0;
+  openingEdgePause = 0.0;
+  openingCloudRush = 0.0;
+  openingPoseRadial = 0.0;
   resetAugments();
   setStageIndicator(0);
 
-  // 안 B: 최초 실행은 옥상 대기(ROOF_WAIT) -> 보행 컷신, 재도전 시 난간 낙하 컷신(DROP_INTRO)부터 시작
+  // 안 B: 최초 실행은 구름 위 540m 초고층 옥상(ROOF_WAIT) -> 5.8초 5-Cut 영화 컷신, 재도전 시 385m 구름 상단 압축 낙하 컷신(1.55초)
   if (!hasSeenRoofIntro) {
     openingPhase = 'ROOF_WAIT';
     openingRetryDrop = false;
@@ -752,10 +765,10 @@ function resetGame() {
     openingPoseMode = 'IDLE';
     openingLetterbox = 1.0;
     openingCamBlend = 1.0;
-    px = 0.0; py = START_ROOF.bh + 2.1; pz = -106.0;
+    px = 0.0; py = START_ROOF.bh + 2.1; pz = -102.0;
     vx = 0.0; vy = 0.0; vz = 0.0;
-    openCamX = 2.2; openCamY = py + 3.4; openCamZ = pz - 10.5;
-    camDist = 11.2; camLagYaw = 0.0; camPitch = -0.10; camRoll = 0.0; fovD = 195.0;
+    openCamX = 7.8; openCamY = py + 1.4; openCamZ = pz - 8.5;
+    camDist = 11.5; camLagYaw = Math.atan2(px - openCamX, pz - openCamZ); camPitch = -0.05; camRoll = 0.0; fovD = 192.0;
   } else {
     openingPhase = 'DROP_INTRO';
     openingRetryDrop = true;
@@ -763,9 +776,9 @@ function resetGame() {
     openingPoseMode = 'SLIP';
     openingLetterbox = 1.0;
     openingCamBlend = 1.0;
-    px = 0.0; py = START_ROOF.bh + 0.6; pz = START_ROOF_LEDGE_Z + 1.2;
-    vx = 0.0; vy = -12.0; vz = 13.5;
-    openCamX = 0.0; openCamY = START_ROOF.bh + 5.8; openCamZ = START_ROOF_LEDGE_Z - 9.0;
+    px = 0.0; py = 385.0; pz = START_ROOF_LEDGE_Z + 0.5;
+    vx = 0.0; vy = -16.0; vz = 13.0;
+    openCamX = -2.6; openCamY = 390.5; openCamZ = START_ROOF_LEDGE_Z - 8.5;
     camDist = 14.0; camLagYaw = 0.0; camPitch = -0.35; camRoll = 0.0; fovD = 205.0;
   }
   peakYBeforeSwing = py;
@@ -2329,6 +2342,21 @@ function drawPC98Building(b, d2, cb, stageCfg, stagePat) {
     if (b.isStartRoof) {
       drawClippedLine3D([x0 + 1.5, h + 0.15, z1 - 0.6], [x1 - 1.5, h + 0.15, z1 - 0.6], cb, PAL.INDIGO_OUTLINE, 3);
       drawClippedLine3D([x0 + 1.5, h + 0.15, z1 - 0.6], [x1 - 1.5, h + 0.15, z1 - 0.6], cb, PAL.GOLD, 1.5);
+      // 초고층 전망대 난간 보행 가이드 라인 & 좌우 항공 장애등 점멸
+      drawClippedLine3D([b.bx - 3.5, h + 0.12, z0 + 6.0], [b.bx - 3.5, h + 0.12, z1 - 1.5], cb, '#475569', 1);
+      drawClippedLine3D([b.bx + 3.5, h + 0.12, z0 + 6.0], [b.bx + 3.5, h + 0.12, z1 - 1.5], cb, '#475569', 1);
+      const beaconBlink = (Math.floor(performance.now() / 380) & 1) === 0;
+      const bCol = beaconBlink ? PAL.CRIMSON : PAL.GOLD;
+      const corners = [[x0 + 2.0, h + 3.2, z1 - 1.5], [x1 - 2.0, h + 3.2, z1 - 1.5]];
+      for (let ci = 0; ci < 2; ci++) {
+        const c3 = corners[ci];
+        drawClippedLine3D([c3[0], h, c3[2]], c3, cb, PAL.INDIGO_OUTLINE, 2);
+        const bp = projectWorldPt(c3[0], c3[1], c3[2], cb);
+        if (bp) {
+          ctx.fillStyle = PAL.INDIGO_OUTLINE; ctx.fillRect((bp.x - 2) | 0, (bp.y - 2) | 0, 5, 5);
+          ctx.fillStyle = bCol; ctx.fillRect((bp.x - 1) | 0, (bp.y - 1) | 0, 3, 3);
+        }
+      }
     }
     if (b.hasPenthouse && d2 < 340 * 340) {
       const pw = hw * 0.44, pd = hd * 0.44, ph = h + 11.0;
@@ -2636,14 +2664,15 @@ function drawSpiderManSprite(cb, totalSpeed) {
 
   let poseKey = 'DIVE';
   let spinThisPose = false;
+  const isHeroPoseCut = (openingPhase === 'DROP_INTRO' && openingPoseMode === 'POSE');
   if (openingPhase === 'ROOF_WAIT') {
     poseKey = 'ROOF_IDLE';
   } else if (openingPhase === 'ROOF_WALK') {
-    poseKey = (openingPoseMode === 'WALK_B') ? 'ROOF_WALK_B' : 'ROOF_WALK_A';
+    poseKey = (openingPoseMode === 'IDLE') ? 'ROOF_IDLE' : ((openingPoseMode === 'WALK_B') ? 'ROOF_WALK_B' : 'ROOF_WALK_A');
   } else if (openingPhase === 'DROP_INTRO') {
     if (openingPoseMode === 'SLIP') poseKey = 'GROUND_JUMP';
     else if (openingPoseMode === 'FLIP') poseKey = 'FLIP';
-    else if (openingPoseMode === 'POSE') poseKey = 'DROP_POSE';
+    else if (openingPoseMode === 'POSE') poseKey = 'DROP_HERO';
     else poseKey = 'DIVE';
   } else if (strikeMode === 3) {
     const cm = CARTOON_MOTIONS[strikeMotionIdx];
@@ -2671,7 +2700,8 @@ function drawSpiderManSprite(cb, totalSpeed) {
     if (!ap) continue;
     const aPose = spideySprites[ai.poseKey] || spideySprites.FLIP;
     const ghostCanvas = ai.tone === 0 ? aPose.cyanGhost : aPose.goldGhost;
-    const sc = Math.max(12, Math.min(46, (4.2 / ap.z) * cb.d)) / ghostCanvas.height;
+    const maxGhostH = isHeroPoseCut ? 64 : 46;
+    const sc = Math.max(12, Math.min(maxGhostH, (4.2 / ap.z) * cb.d)) / ghostCanvas.height;
     const dw = Math.round(ghostCanvas.width * sc), dh = Math.round(ghostCanvas.height * sc);
     ctx.save();
     ctx.translate(Math.round(ap.x), Math.round(ap.y));
@@ -2683,7 +2713,8 @@ function drawSpiderManSprite(cb, totalSpeed) {
 
   const pose = spideySprites[poseKey];
   const spr = pose.canvas;
-  const screenH = Math.max(14, Math.min(54, (4.2 / centerPt.z) * cb.d));
+  const maxSprH = isHeroPoseCut ? 72 : 54;
+  const screenH = Math.max(14, Math.min(maxSprH, (4.2 / centerPt.z) * cb.d));
   const scale = screenH / spr.height;
   const drawW = Math.round(spr.width * scale), drawH = Math.round(spr.height * scale);
   const cx = Math.round(centerPt.x), cy = Math.round(centerPt.y);
@@ -2775,91 +2806,150 @@ let lastTime = 0;
 let fpsFrames = 0, fpsAcc = 0;
 let afterimageSampleAcc = 0;
 
-// Step 2: 옥상 대기 -> 천천히 보행 -> 스르륵 낙하 & 카메라 지연 급추격 -> 공중 포즈 -> 다이브 컷신
+// Step 2: 5-Cut 영화적 오프닝 컷신 (540m 구름 위 옥상 -> 보행 & 난간 숨고르기 -> 난간 잔류 스르륵 추락 -> 구름 돌파 급추격 -> 역방향 공중 포즈 -> 다이브 스냅)
 function updateOpeningCutscene(dt) {
   if (!isOpeningCutscene()) return false;
   simTime += dt;
+  const prevT = openingTimer;
   openingTimer += dt;
 
+  const aimOpeningCam = (tx, ty, tz, rate) => {
+    const dx = tx - openCamX, dy = ty - openCamY, dz = tz - openCamZ;
+    const hDist = Math.hypot(dx, dz) || 1.0;
+    const desYaw = Math.atan2(dx, dz);
+    const desPitch = Math.max(-1.22, Math.min(0.68, Math.atan2(dy, hDist)));
+    if (rate >= 99.0) {
+      camLagYaw = desYaw;
+      camPitch = desPitch;
+    } else {
+      let yd = (desYaw - camLagYaw + Math.PI) % (Math.PI * 2) - Math.PI;
+      if (yd < -Math.PI) yd += Math.PI * 2;
+      camLagYaw += yd * Math.min(1.0, rate * dt);
+      camPitch += (desPitch - camPitch) * Math.min(1.0, rate * dt);
+    }
+  };
+
   if (openingPhase === 'ROOF_WAIT') {
-    px = 0.0; py = START_ROOF.bh + 2.1; pz = -106.0;
+    px = 0.0; py = START_ROOF.bh + 2.1; pz = -102.0;
     vx = 0.0; vy = 0.0; vz = 0.0;
-    openCamX = 2.2 + Math.sin(openingTimer * 0.9) * 0.35;
-    openCamY = py + 3.4 + Math.sin(openingTimer * 1.4) * 0.12;
-    openCamZ = pz - 10.5;
-    camYaw = 0.0; camLagYaw = 0.0; camPitch = -0.10; camRoll = 0.0; fovD = 195.0;
+    openCamX = 7.8 + Math.sin(openingTimer * 0.7) * 0.45;
+    openCamY = py + 1.4 + Math.sin(openingTimer * 1.1) * 0.14;
+    openCamZ = pz - 8.5;
+    camYaw = 0.0;
+    aimOpeningCam(px - 1.2, py + 0.2, pz + 6.0, 12.0);
+    camRoll = 0.0;
+    fovD = 192.0;
     openingCamBlend = 1.0;
     openingLetterbox = 1.0;
+    openingCloudRush = 0.0;
+    openingPoseRadial = 0.0;
     openingPoseMode = 'IDLE';
     return true;
   }
 
   if (openingPhase === 'ROOF_WALK') {
-    const distToEdge = Math.max(0.0, START_ROOF_LEDGE_Z - pz);
-    const walkSpd = distToEdge < 6.5 ? (9.5 + (distToEdge / 6.5) * 4.5) : 14.0;
-    pz += walkSpd * dt;
-    vx = 0.0; vy = 0.0; vz = walkSpd;
-    py = START_ROOF.bh + 2.1 + Math.abs(Math.sin(openingTimer * 6.8)) * 0.24;
-    openingPoseMode = ((Math.floor(openingTimer * 4.6) & 1) === 0) ? 'WALK_A' : 'WALK_B';
+    openingCloudRush = 0.0;
+    openingPoseRadial = 0.0;
+    const stopZ = START_ROOF_LEDGE_Z - 1.0; // -82.0
+    if (pz < stopZ) {
+      const distToEdge = Math.max(0.0, stopZ - pz);
+      const walkSpd = distToEdge < 5.5 ? (8.5 + (distToEdge / 5.5) * 4.5) : 13.0;
+      pz = Math.min(stopZ, pz + walkSpd * dt);
+      vx = 0.0; vy = 0.0; vz = walkSpd;
+      py = START_ROOF.bh + 2.1 + Math.abs(Math.sin(openingTimer * 6.4)) * 0.22;
+      openingPoseMode = ((Math.floor(openingTimer * 4.4) & 1) === 0) ? 'WALK_A' : 'WALK_B';
 
-    const walkProg = Math.max(0.0, Math.min(1.0, (pz - (-106.0)) / (START_ROOF_LEDGE_Z - (-106.0))));
-    openCamX += (0.0 - openCamX) * 2.8 * dt;
-    openCamY += ((START_ROOF.bh + 5.6 + walkProg * 0.9) - openCamY) * 4.0 * dt;
-    openCamZ += ((pz - 11.2) - openCamZ) * 4.2 * dt;
-    camYaw = 0.0; camLagYaw = 0.0; camRoll = 0.0;
-    camPitch += ((-0.10 - walkProg * 0.24) - camPitch) * 4.0 * dt;
-    fovD += ((195.0 + walkProg * 12.0) - fovD) * 3.5 * dt;
+      const walkProg = Math.max(0.0, Math.min(1.0, (pz - (-102.0)) / (stopZ - (-102.0))));
+      // 전반 등 뒤 로우 앵글 -> 후반 난간 측면 대각선 앵글로 영화적 카메라 스윕
+      const desCamX = walkProg < 0.55 ? (7.8 - walkProg * 14.5) : (-6.2);
+      const desCamY = START_ROOF.bh + 3.4 + walkProg * 0.8;
+      const desCamZ = walkProg < 0.55 ? (pz - 10.2) : (pz - 4.2 + (walkProg - 0.55) * 4.5);
+      openCamX += (desCamX - openCamX) * 3.2 * dt;
+      openCamY += (desCamY - openCamY) * 3.5 * dt;
+      openCamZ += (desCamZ - openCamZ) * 4.0 * dt;
+      camYaw = 0.0;
+      aimOpeningCam(px, START_ROOF.bh + 1.6 - walkProg * 1.4, pz + 4.5, 5.0);
+      camRoll = 0.0;
+      fovD += ((192.0 + walkProg * 14.0) - fovD) * 3.5 * dt;
+    } else {
+      // 난간 끝 0.32초 정지: 발밑 540m 구름 바다 심연을 내려다보는 숨 고르기
+      openingEdgePause += dt;
+      vx = 0.0; vy = 0.0; vz = 0.0;
+      py = START_ROOF.bh + 2.1;
+      openingPoseMode = 'IDLE';
+
+      openCamX += (-3.4 - openCamX) * 3.8 * dt;
+      openCamY += ((START_ROOF.bh + 5.2) - openCamY) * 3.5 * dt;
+      openCamZ += ((START_ROOF_LEDGE_Z - 6.8) - openCamZ) * 3.8 * dt;
+      aimOpeningCam(px, START_ROOF.bh - 6.0, START_ROOF_LEDGE_Z + 12.0, 5.5);
+      fovD += (208.0 - fovD) * 3.5 * dt;
+
+      if (openingEdgePause >= 0.32) {
+        openingPhase = 'DROP_INTRO';
+        openingTimer = 0.0;
+        openingEdgePause = 0.0;
+        openingPoseMode = 'SLIP';
+        py = START_ROOF.bh + 1.0;
+        pz = START_ROOF_LEDGE_Z + 0.2;
+        vx = 0.0; vy = -2.0; vz = 9.0;
+      }
+    }
     openingCamBlend = 1.0;
     openingLetterbox = 1.0;
-
-    if (pz >= START_ROOF_LEDGE_Z + 0.5) {
-      openingPhase = 'DROP_INTRO';
-      openingTimer = 0.0;
-      openingPoseMode = 'SLIP';
-      py = START_ROOF.bh + 0.8;
-      vx = 0.0; vy = -3.5; vz = 11.5;
-    }
     return true;
   }
 
   if (openingPhase === 'DROP_INTRO') {
-    const introDur  = openingRetryDrop ? 0.94 : 1.50;
-    const lingerEnd = openingRetryDrop ? 0.22 : 0.38;
-    const flipStart = openingRetryDrop ? 0.34 : 0.56;
-    const poseStart = openingRetryDrop ? 0.56 : 0.88;
-    const diveStart = openingRetryDrop ? 0.72 : 1.14;
+    const introDur      = openingRetryDrop ? 1.55 : 3.85;
+    const lingerEnd     = openingRetryDrop ? 0.24 : 0.78;
+    const chaseStart    = openingRetryDrop ? 0.30 : 1.00;
+    const poseCutStart  = openingRetryDrop ? 0.72 : 2.15;
+    const heroHoldStart = openingRetryDrop ? 0.96 : 2.63;
+    const diveSnapStart = openingRetryDrop ? 1.22 : 3.25;
     const t = openingTimer;
 
-    if (t < flipStart) {
+    // 1) 캐릭터 5-Cut 낙하 물리 (슬로우 스르륵 -> 구름 돌파 급강하 -> 슬로우 공중 플립/히어로 포즈 -> 다이브 스냅)
+    if (t < chaseStart) {
       openingPoseMode = 'SLIP';
       doingFlip = false;
       isDiving = false;
-      const slipG = openingRetryDrop ? 58.0 : (32.0 + (t / Math.max(0.01, flipStart)) * 26.0);
-      vy -= slipG * dt;
-      vz += (14.5 - vz) * 2.2 * dt;
-    } else if (t < poseStart) {
+      const g = openingRetryDrop ? 56.0 : (16.0 + (t / Math.max(0.01, chaseStart)) * 32.0);
+      vy -= g * dt;
+      vz += ((openingRetryDrop ? 14.0 : 9.5) - vz) * 2.0 * dt;
+    } else if (t < poseCutStart) {
+      openingPoseMode = 'DIVE';
+      doingFlip = false;
+      isDiving = true;
+      vy -= (openingRetryDrop ? 118.0 : 112.0) * dt;
+      vz += ((openingRetryDrop ? 16.0 : 12.0) - vz) * 2.5 * dt;
+    } else if (t < heroHoldStart) {
+      // Cut 4 전반: 역방향 앵글 공중 1회전 플립 (미세 슬로우)
       openingPoseMode = 'FLIP';
       doingFlip = true;
       isDiving = false;
-      flipAngle = ((t - flipStart) / Math.max(0.01, poseStart - flipStart)) * Math.PI * 2;
-      vy -= (openingRetryDrop ? 68.0 : 54.0) * dt;
-      vz += (17.5 - vz) * 2.5 * dt;
-      afterimageTimer = 0.14;
-    } else if (t < diveStart) {
+      flipAngle = ((t - poseCutStart) / Math.max(0.01, heroHoldStart - poseCutStart)) * Math.PI * 2;
+      const targetVy = openingRetryDrop ? -64.0 : -58.0;
+      vy += (targetVy - vy) * 5.0 * dt;
+      vz += (14.0 - vz) * 2.5 * dt;
+      afterimageTimer = 0.16;
+    } else if (t < diveSnapStart) {
+      // Cut 4 후반: 스파이더버스 오마주 DROP_HERO 포즈 홀드 (미세 슬로우)
       openingPoseMode = 'POSE';
       doingFlip = false;
       flipAngle = 0.0;
       isDiving = false;
-      vy -= (openingRetryDrop ? 62.0 : 50.0) * dt;
-      vz += (19.0 - vz) * 2.5 * dt;
-      afterimageTimer = 0.14;
+      const targetVy = openingRetryDrop ? -54.0 : -46.0;
+      vy += (targetVy - vy) * 6.0 * dt;
+      vz += (14.5 - vz) * 2.5 * dt;
+      afterimageTimer = 0.16;
     } else {
+      // Cut 5: 다이브 스냅 & 3인칭 시점 복귀
       openingPoseMode = 'DIVE';
       doingFlip = false;
       flipAngle = 0.0;
       isDiving = true;
-      vy -= (openingRetryDrop ? 86.0 : 74.0) * dt;
-      vz += (22.5 - vz) * 4.0 * dt;
+      vy -= (openingRetryDrop ? 86.0 : 78.0) * dt;
+      vz += (22.0 - vz) * 4.5 * dt;
       diveCharge = Math.min(0.42, diveCharge + dt * 1.0);
     }
 
@@ -2867,53 +2957,97 @@ function updateOpeningCutscene(dt) {
     py += vy * dt;
     pz += vz * dt;
     camYaw = 0.0;
-    camLagYaw = 0.0;
 
-    if (t < lingerEnd) {
-      // 카메라는 난간에 잠시 머물며 캐릭터가 발밑 심연으로 스르륵 떨어지는 거리감을 연출
-      openCamX += (0.0 - openCamX) * 2.2 * dt;
-      openCamY += ((START_ROOF.bh + 5.2) - openCamY) * 1.1 * dt;
-      openCamZ += ((START_ROOF_LEDGE_Z - 5.2) - openCamZ) * 1.3 * dt;
-      const lookDx = px - openCamX, lookDy = py - openCamY, lookDz = pz - openCamZ;
-      const targetPitch = Math.max(-1.15, Math.min(0.1, Math.atan2(lookDy, Math.hypot(lookDx, lookDz) || 1.0)));
-      camPitch += (targetPitch - camPitch) * 6.0 * dt;
+    // 2) 멀티-컷 영화 카메라 워크
+    if (t < chaseStart) {
+      // Cut 2: 카메라는 난간 위에 머물러 스파이더맨이 구름 속 심연으로 작아지며 떨어지는 모습 추적
+      openingCloudRush = 0.0;
+      openingPoseRadial = 0.0;
+      if (t < lingerEnd) {
+        const ledgeY = openingRetryDrop ? 390.5 : (START_ROOF.bh + 5.0);
+        openCamX += (-2.8 - openCamX) * 1.6 * dt;
+        openCamY += (ledgeY - openCamY) * 1.2 * dt;
+        openCamZ += ((START_ROOF_LEDGE_Z - 4.5) - openCamZ) * 1.4 * dt;
+      } else {
+        // 추격 직전 난간 너머로 서서히 몸을 기울이며 낙하 개시
+        const tipRate = 1.6 + ((t - lingerEnd) / Math.max(0.01, chaseStart - lingerEnd)) * 2.4;
+        openCamX += (0.0 - openCamX) * tipRate * dt;
+        openCamY += ((py + 14.0) - openCamY) * tipRate * dt;
+        openCamZ += ((pz - 10.0) - openCamZ) * tipRate * dt;
+      }
+      aimOpeningCam(px, py, pz, 7.5);
       camRoll += (0.0 - camRoll) * 6.0 * dt;
-      fovD += (208.0 - fovD) * 4.0 * dt;
+      fovD += (212.0 - fovD) * 4.0 * dt;
+      openingCamBlend = 1.0;
+      openingLetterbox = 1.0;
+    } else if (t < poseCutStart) {
+      // Cut 3: 뒤늦게 난간을 박차고 초고속 수직 급추격 + 495m->330m 구름층 돌파 연출!
+      const cProg = Math.max(0.0, Math.min(1.0, (t - chaseStart) / Math.max(0.01, poseCutStart - chaseStart)));
+      const chaseRate = 3.2 + cProg * cProg * 12.5;
+      openCamX += (px - openCamX) * Math.min(1.0, chaseRate * dt);
+      openCamY += ((py + 6.5 - vy * 0.04) - openCamY) * Math.min(1.0, chaseRate * dt);
+      openCamZ += ((pz - 14.5) - openCamZ) * Math.min(1.0, chaseRate * dt);
+      aimOpeningCam(px, py - 2.0, pz + 3.0, 9.0);
+      camRoll += (Math.sin(cProg * Math.PI) * 0.08 - camRoll) * 6.0 * dt;
+      const targetFov = 198.0 - Math.sin(cProg * Math.PI * 0.85) * 70.0;
+      fovD += (targetFov - fovD) * 7.5 * dt;
+      // 구름층 통과 중(또는 추격 피크) 화면 좌우 구름 스프라이트 돌파 연출
+      const inCloudBand = (py <= 495.0 && py >= 310.0) ? 1.0 : 0.45;
+      openingCloudRush = Math.sin(cProg * Math.PI) * inCloudBand;
+      openingPoseRadial = 0.0;
+      openingCamBlend = 1.0;
+      openingLetterbox = 1.0;
+    } else if (t < diveSnapStart) {
+      // Cut 4: 스파이더버스 역방향 올려다보는 공중 포즈 컷 (앞쪽 아래에서 하늘/구름 배경으로 올려다보기!)
+      const pProg = Math.max(0.0, Math.min(1.0, (t - poseCutStart) / Math.max(0.01, diveSnapStart - poseCutStart)));
+      const inHold = (t >= heroHoldStart);
+      const desCamX = px + (3.3 - pProg * 1.1);
+      const desCamY = py - (4.5 - pProg * 0.6);
+      const desCamZ = pz + (7.4 - pProg * 1.1);
+      if (prevT < poseCutStart) {
+        // 매치 컷: 즉시 역방향 앵글로 스냅
+        openCamX = desCamX; openCamY = desCamY; openCamZ = desCamZ;
+        aimOpeningCam(px, py + 0.3, pz, 100.0);
+        camRoll = -0.18;
+        fovD = 202.0;
+      } else {
+        openCamX += (desCamX - openCamX) * 14.0 * dt;
+        openCamY += (desCamY - openCamY) * 14.0 * dt;
+        openCamZ += (desCamZ - openCamZ) * 14.0 * dt;
+        aimOpeningCam(px, py + 0.3, pz, 14.0);
+        camRoll += ((inHold ? -0.22 : -0.14) - camRoll) * 7.0 * dt;
+        fovD += ((inHold ? 214.0 : 196.0) - fovD) * 6.0 * dt;
+      }
+      openingCloudRush = 0.0;
+      openingPoseRadial = inHold ? 1.0 : 0.35;
       openingCamBlend = 1.0;
       openingLetterbox = 1.0;
     } else {
-      // 뒤늦게 난간을 뛰어넘어 초고속으로 추격하는 다이내믹 낙하 카메라
-      const chaseT = Math.max(0.0, Math.min(1.0, (t - lingerEnd) / Math.max(0.01, introDur - lingerEnd)));
-      const inPoseBeat = (t >= poseStart && t < diveStart);
-      const inDiveBeat = (t >= diveStart);
-      const desCamX = px + (inPoseBeat ? 2.0 : 0.0);
-      const desCamY = py + (inPoseBeat ? 2.8 : 4.2) - vy * 0.032;
-      const desCamZ = pz - (inPoseBeat ? 11.4 : 16.5);
-      const chaseRate = 2.8 + chaseT * chaseT * 11.0;
-      openCamX += (desCamX - openCamX) * Math.min(1.0, chaseRate * dt);
-      openCamY += (desCamY - openCamY) * Math.min(1.0, chaseRate * dt);
-      openCamZ += (desCamZ - openCamZ) * Math.min(1.0, chaseRate * dt);
-
-      const lookDx = px - openCamX, lookDy = py - openCamY, lookDz = pz - openCamZ;
-      const lookPitch = Math.max(-1.12, Math.min(0.1, Math.atan2(lookDy, Math.hypot(lookDx, lookDz) || 1.0)));
-      const desPitch = inDiveBeat ? -0.52 : lookPitch;
-      camPitch += (desPitch - camPitch) * 7.5 * dt;
-
-      const desRoll = inPoseBeat ? 0.16 : 0.0;
-      camRoll += (desRoll - camRoll) * 8.0 * dt;
-
-      const desFov = inPoseBeat ? 182.0 : (inDiveBeat ? 156.0 : 138.0);
-      fovD += (desFov - fovD) * 7.0 * dt;
-
-      if (inDiveBeat) {
-        const diveProg = Math.max(0.0, Math.min(1.0, (t - diveStart) / Math.max(0.01, introDur - diveStart)));
-        openingLetterbox = 1.0 - diveProg;
-        openingCamBlend = 1.0 - diveProg;
-        camDist = 16.5;
+      // Cut 5: 매치 컷으로 등 뒤 3인칭 시점 복귀 + 다이브 스냅 + 레터박스 해제
+      const dProg = Math.max(0.0, Math.min(1.0, (t - diveSnapStart) / Math.max(0.01, introDur - diveSnapStart)));
+      const desCamX = px;
+      const desCamY = py + 3.8 - vy * 0.032;
+      const desCamZ = pz - 16.5;
+      if (prevT < diveSnapStart) {
+        openCamX = desCamX; openCamY = desCamY + 2.5; openCamZ = desCamZ - 2.0;
+        camLagYaw = 0.0;
+        camPitch = -0.58;
+        camRoll = 0.12;
+        fovD = 148.0;
       } else {
-        openingLetterbox = 1.0;
-        openingCamBlend = 1.0;
+        openCamX += (desCamX - openCamX) * 10.0 * dt;
+        openCamY += (desCamY - openCamY) * 10.0 * dt;
+        openCamZ += (desCamZ - openCamZ) * 10.0 * dt;
+        camLagYaw = 0.0;
+        camPitch += (-0.54 - camPitch) * 8.0 * dt;
+        camRoll += (0.0 - camRoll) * 9.0 * dt;
+        fovD += (160.0 - fovD) * 7.0 * dt;
       }
+      openingCloudRush = 0.0;
+      openingPoseRadial = 0.0;
+      openingLetterbox = 1.0 - dProg;
+      openingCamBlend = 1.0 - dProg;
+      camDist = 16.5;
     }
 
     if (afterimageTimer > 0) {
@@ -2923,7 +3057,7 @@ function updateOpeningCutscene(dt) {
         afterimageSampleAcc = 0;
         afterimages.push({
           x: px, y: py, z: pz,
-          poseKey: openingPoseMode === 'POSE' ? 'DROP_POSE' : 'FLIP',
+          poseKey: openingPoseMode === 'POSE' ? 'DROP_HERO' : 'FLIP',
           rot: doingFlip ? flipAngle : 0,
           tone: afterimages.length & 1
         });
@@ -2942,6 +3076,8 @@ function updateOpeningCutscene(dt) {
       openingTimer = 0.0;
       openingCamBlend = 0.0;
       openingLetterbox = 0.0;
+      openingCloudRush = 0.0;
+      openingPoseRadial = 0.0;
       doingFlip = false;
       flipAngle = 0.0;
       isDiving = true;
@@ -3766,7 +3902,7 @@ function tick(now) {
   const panoH = panoCanvas.height;
 
   ctx.fillStyle = stageCfg.skyTop;
-  ctx.fillRect(-320, horizonY - 520, 640, 520 - panoH + 2);
+  ctx.fillRect(-360, horizonY - 980, 720, 980 - panoH + 2);
 
   let normYaw = (camLagYaw / (Math.PI * 2)) % 1.0;
   if (normYaw < 0) normYaw += 1.0;
@@ -3784,9 +3920,9 @@ function tick(now) {
   }
 
   ctx.fillStyle = stagePat.asphaltFar;
-  ctx.fillRect(-320, horizonY, 640, 26);
+  ctx.fillRect(-360, horizonY, 720, 26);
   ctx.fillStyle = stagePat.asphalt;
-  ctx.fillRect(-320, horizonY + 22, 640, 420);
+  ctx.fillRect(-360, horizonY + 22, 720, 980);
   ctx.restore();
 
   const halfB = BLOCK_SIZE * 0.5;
@@ -4097,22 +4233,54 @@ function tick(now) {
       ctx.beginPath(); ctx.moveTo(edgeX, y0); ctx.lineTo(edgeX + dir * len, y0 + (Math.random() - 0.5) * 10); ctx.stroke();
     }
   }
-  if (isDiving || (openingPhase === 'DROP_INTRO' && openingTimer > (openingRetryDrop ? 0.22 : 0.38))) {
+  // Cut 3: 구름층(495m->330m) 돌파 시 사전 베이크 2번 구름 스프라이트가 좌우 화면 끝을 스치며 위로 솟구치는 연출
+  if (openingCloudRush > 0.04 && cloudSpr) {
+    for (let ci = 0; ci < 6; ci++) {
+      const side = (ci & 1) ? 1 : -1;
+      const lanePhase = (simTime * (2.6 + (ci % 3) * 0.55) + ci * 0.37) % 1.0;
+      const cw = Math.round(cloudSpr.width * (1.35 + (ci % 3) * 0.45));
+      const ch = Math.round(cloudSpr.height * (1.35 + (ci % 3) * 0.45));
+      const cxPos = side < 0
+        ? Math.round(-cw * 0.35 + (ci % 3) * 18)
+        : Math.round(LCD_W - cw * 0.65 - (ci % 3) * 18);
+      const cyPos = Math.round((1.0 - lanePhase) * (LCD_H + ch * 2) - ch);
+      ctx.drawImage(cloudSpr, cxPos, cyPos, cw, ch);
+    }
+  }
+
+  // Cut 4: 스파이더버스 역방향 공중 포즈 컷 전용 방사형 코믹 집중선 (ESP32 초경량 1px 벡터)
+  if (openingPoseRadial > 0.04) {
+    const rayCnt = openingPoseRadial > 0.6 ? 16 : 10;
+    const spinOff = simTime * 2.2;
+    ctx.lineWidth = 1;
+    for (let ri = 0; ri < rayCnt; ri++) {
+      const ang = (ri / rayCnt) * Math.PI * 2 + spinOff;
+      const rIn = 62 + ((ri & 1) ? 14 : 4);
+      const rOut = rIn + 38 + ((ri % 3) * 14);
+      ctx.strokeStyle = (ri % 3 === 0) ? PAL.GOLD : ((ri & 1) ? PAL.NEON_CYAN : '#ffffff');
+      ctx.beginPath();
+      ctx.moveTo(LCD_W * 0.5 + Math.cos(ang) * rIn, LCD_H * 0.5 + Math.sin(ang) * rIn * 0.62);
+      ctx.lineTo(LCD_W * 0.5 + Math.cos(ang) * rOut, LCD_H * 0.5 + Math.sin(ang) * rOut * 0.62);
+      ctx.stroke();
+    }
+  }
+
+  if (isDiving || (openingPhase === 'DROP_INTRO' && openingTimer > (openingRetryDrop ? 0.30 : 1.00) && openingPoseRadial <= 0.04)) {
     const isDropChase = (openingPhase === 'DROP_INTRO' || openingPhase === 'DROP_CATCH');
-    const lineCnt = isDropChase ? 9 : 6;
+    const lineCnt = isDropChase ? 11 : 6;
     ctx.strokeStyle = (openingPhase === 'DROP_CATCH' && py <= 95.0)
       ? PAL.GOLD
       : (diveCharge > 0.7 ? PAL.GOLD : PAL.NEON_CYAN);
     ctx.lineWidth = 1;
     for (let i = 0; i < lineCnt; i++) {
       const lx = isDropChase
-        ? ((i & 1) ? (8 + Math.random() * 68) : (LCD_W - 76 + Math.random() * 68))
+        ? ((i & 1) ? (6 + Math.random() * 72) : (LCD_W - 78 + Math.random() * 72))
         : (24 + Math.random() * (LCD_W - 48));
       const ly = Math.random() * (LCD_H - 25);
-      ctx.beginPath(); ctx.moveTo(lx, ly); ctx.lineTo(lx, ly + 18 + (isDropChase ? 14 : diveCharge * 18)); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(lx, ly); ctx.lineTo(lx, ly + 18 + (isDropChase ? 18 : diveCharge * 18)); ctx.stroke();
     }
   }
-  if (totalSpeed > 82 || (strikeMode !== 0 && strikePhase === 'RUSH') || groundSkimIntensity > 0.4) {
+  if ((totalSpeed > 82 && !isOpeningCutscene()) || (strikeMode !== 0 && strikePhase === 'RUSH') || groundSkimIntensity > 0.4) {
     const cnt = Math.min(11, ((totalSpeed - 70) / 9) | 0) + (strikePhase === 'RUSH' ? 6 : 0);
     for (let i = 0; i < cnt; i++) {
       const ang = Math.random() * Math.PI * 2;
@@ -4128,7 +4296,7 @@ function tick(now) {
 
   const lbBlend = Math.max(strikeCamBlend, openingLetterbox);
   if (lbBlend > 0.04) {
-    const barH = Math.round(lbBlend * 12);
+    const barH = Math.round(lbBlend * (openingLetterbox > strikeCamBlend ? 14 : 11));
     ctx.fillStyle = PAL.INDIGO_OUTLINE;
     ctx.fillRect(0, 0, LCD_W, barH);
     ctx.fillRect(0, LCD_H - barH, LCD_W, barH);
