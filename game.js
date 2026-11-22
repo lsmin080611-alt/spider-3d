@@ -7,7 +7,7 @@
 const GAME_MAX_ALTITUDE = 650.0;     // 고도 제한 대폭 해제 (335m -> 650m)
 const BASE_GRAVITY = 64.0;           // 묵직한 진자 회전과 리드미컬한 체공시간 기준 중력
 const BASE_AIR_DRAG = 0.11;          // 진공 활공 체감 확대
-const BASE_SWING_MAX_SPD = 108.0;    // 오버드라이브 성장 여지 확보
+const BASE_SWING_MAX_SPD = 92.0;     // 노증강 순항 100 이하 기준 (오버드라이브 성장 여지 확보)
 const BASE_FREE_MAX_SPD = 68.0;
 const BASE_STRIKE_RUSH_SPD = 136.0;
 const BASE_PIERCE_SPD = 78.0;
@@ -985,8 +985,12 @@ function startWebSwing(bList, cList, fromGroundLaunch = false) {
   }
 
   if (diveCharge >= 0.22) {
-    const lowBonus = py < 45.0 ? (1.0 + (45.0 - py) / 45.0 * 0.65) : 1.0;
-    const boost = (24.0 + diveCharge * 34.0) * lowBonus;
+    const aug = getAugStats();
+    const lowBonus = py < 45.0 ? (1.0 + (45.0 - py) / 45.0 * 0.30) : 1.0;
+    const softBoostCap = (BASE_SWING_MAX_SPD + 16.0) * aug.maxSpeedMult;
+    const curSpd = Math.hypot(vx, vy, vz);
+    const rawBoost = (10.0 + diveCharge * 10.0) * lowBonus * aug.swingPushMult;
+    const boost = curSpd < softBoostCap ? Math.min(rawBoost, softBoostCap - curSpd) : 0.0;
     vx += sinY * boost;
     vz += cosY * boost;
     const cMult = Math.pow(1.38, Math.min(swingCombo, 10));
@@ -1061,14 +1065,20 @@ function onSwingUp() {
       const swingDepth = Math.max(10.0, peakYBeforeSwing - swingMinY);
       const depthRatio = Math.min(1.0, swingDepth / 75.0);
       const sinY = Math.sin(camYaw), cosY = Math.cos(camYaw);
+      const maxCruiseSpd = BASE_SWING_MAX_SPD * aug.maxSpeedMult;
+      const softBoostCap = (BASE_SWING_MAX_SPD + 16.0) * aug.maxSpeedMult;
 
       if (wasPerfect) {
         hitStopTimer = 0.045;
-        const upwardKick = (12.0 + depthRatio * 8.0) * aug.bungeeBounce;
-        const targetVy = Math.min(84.0 * aug.bungeeBounce, vy + upwardKick);
+        const upwardKick = (10.0 + depthRatio * 7.0) * aug.bungeeBounce;
+        const targetVy = Math.min(78.0 * aug.bungeeBounce, vy + upwardKick);
         vy = Math.max(vy, targetVy);
-        vx += sinY * (26.0 + depthRatio * 22.0);
-        vz += cosY * (26.0 + depthRatio * 22.0);
+
+        const curSpd = Math.hypot(vx, vy, vz);
+        const rawFwd = (10.0 + depthRatio * 6.0) * aug.swingPushMult;
+        const fwdAdd = curSpd < softBoostCap ? Math.min(rawFwd, softBoostCap - curSpd) : 0.0;
+        vx += sinY * fwdAdd;
+        vz += cosY * fwdAdd;
         perfectBuffTimer = 3.4;
         if (refillElasticCharges()) {
           spawnSparks(px, py, pz, PAL.EMERALD, 6, 26);
@@ -1086,10 +1096,15 @@ function onSwingUp() {
         addPopup('PERFECT!! +' + perfXp + 'XP', PAL.NEON_CYAN, 3);
       } else {
         const upwardKick = (6.0 + depthRatio * 6.0) * aug.bungeeBounce;
-        const targetVy = Math.min(68.0 * aug.bungeeBounce, vy + upwardKick);
+        const targetVy = Math.min(64.0 * aug.bungeeBounce, vy + upwardKick);
         vy = Math.max(vy, targetVy);
-        vx += sinY * (5.0 + depthRatio * 8.0) * aug.swingPushMult;
-        vz += cosY * (5.0 + depthRatio * 8.0) * aug.swingPushMult;
+
+        const curHSpd = Math.hypot(vx, vz);
+        if (curHSpd < maxCruiseSpd) {
+          const fwdAdd = Math.min((3.0 + depthRatio * 4.0) * aug.swingPushMult, maxCruiseSpd - curHSpd);
+          vx += sinY * fwdAdd;
+          vz += cosY * fwdAdd;
+        }
 
         const pts = Math.round((90 + swingDepth * 2.2) * Math.pow(1.38, Math.min(swingCombo, 10)));
         score += pts;
@@ -2450,7 +2465,7 @@ function tick(now) {
       vx += rightX * (turnInput * 48.0 * aug.turnMult) * dt;
       vz += rightZ * (turnInput * 48.0 * aug.turnMult) * dt;
 
-      const maxSwingSpd = (BASE_SWING_MAX_SPD + (perfectBuffTimer > 0 ? 22.0 : 0.0)) * aug.maxSpeedMult;
+      const maxSwingSpd = (BASE_SWING_MAX_SPD + (perfectBuffTimer > 0 ? 12.0 : 0.0)) * aug.maxSpeedMult;
 
       if (forwardInput > 0.15) {
         ropeLen = Math.max(24.0, ropeLen - 32.0 * forwardInput * dt);
@@ -2505,9 +2520,9 @@ function tick(now) {
             // 직전 속력을 하드캡 없이 접선 방향으로 98.5% 보존
             targetSpd = speedAfter + (speedBefore - speedAfter) * 0.985;
           }
-          // 기본 능동 상한(maxSwingSpd) 초과 고속 구간은 강제 급제동 대신 완만한 공력 감쇠
+          // 기본 순항 상한(maxSwingSpd) 초과 고속 구간은 급제동 없이 공력 감쇠로 자연 수렴
           if (targetSpd > maxSwingSpd && !hasVacuum) {
-            targetSpd -= (targetSpd - maxSwingSpd) * Math.min(1.0, 0.22 * dt);
+            targetSpd -= (targetSpd - maxSwingSpd) * Math.min(1.0, 1.35 * dt);
           }
           const sc = targetSpd / speedAfter;
           vx *= sc; vy *= sc; vz *= sc;
@@ -2526,7 +2541,7 @@ function tick(now) {
         if (py < 24.0 && py > 4.5) {
           const skimBoost = (1.0 - (py - 4.5) / 19.5) * 24.0 * aug.swingPushMult;
           const hNow = Math.hypot(vx, vz);
-          if (hNow > 1.0 && hNow < (maxSwingSpd + 14.0)) {
+          if (hNow > 1.0 && hNow < (maxSwingSpd + 6.0)) {
             vx += (vx / hNow) * skimBoost * dt;
             vz += (vz / hNow) * skimBoost * dt;
           }
@@ -2585,16 +2600,25 @@ function tick(now) {
 
       const hasVacuum = getLv('vacuum') > 0;
       const maxFreeSpd = BASE_FREE_MAX_SPD * aug.maxSpeedMult;
+      const maxSwingSpd = (BASE_SWING_MAX_SPD + (perfectBuffTimer > 0 ? 12.0 : 0.0)) * aug.maxSpeedMult;
       let curHSpd = Math.hypot(vx, vz);
 
       if (forwardInput > 0) {
-        curHSpd = Math.min(Math.max(curHSpd, maxFreeSpd), curHSpd + 24.0 * aug.swingPushMult * forwardInput * dt);
+        if (curHSpd < maxFreeSpd) {
+          curHSpd = Math.min(maxFreeSpd, curHSpd + 24.0 * aug.swingPushMult * forwardInput * dt);
+        } else if (!hasVacuum) {
+          curHSpd = Math.max(maxFreeSpd, curHSpd * (1.0 - BASE_AIR_DRAG * dt));
+        }
       } else if (forwardInput < 0 && !isGliding && !hasVacuum) {
         curHSpd = Math.max(0.0, curHSpd + 42.0 * forwardInput * dt);
       } else if (isGliding) {
         curHSpd = hasVacuum ? Math.max(22.0, curHSpd) : Math.max(22.0, curHSpd * (1.0 - 0.14 * dt));
       } else if (!hasVacuum) {
         curHSpd = Math.max(0.0, curHSpd * (1.0 - BASE_AIR_DRAG * dt));
+      }
+
+      if (!hasVacuum && curHSpd > maxSwingSpd) {
+        curHSpd -= (curHSpd - maxSwingSpd) * Math.min(1.0, 1.15 * dt);
       }
 
       const turnRate = (isGliding ? 1.65 : 0.95) * aug.turnMult;
