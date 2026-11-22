@@ -1,0 +1,264 @@
+/* Mobile-first handheld ergonomics: prevent scrolling, zooming, and text selection */
+    * {
+      box-sizing: border-box;
+      -webkit-tap-highlight-color: transparent;
+      user-select: none;
+      -webkit-user-select: none;
+      -webkit-touch-callout: none;
+    }
+
+    html, body {
+      margin: 0;
+      padding: 0;
+      width: 100%;
+      height: 100dvh;
+      overflow: hidden;
+      background: radial-gradient(circle at 50% 15%, #161e38 0%, #0b1020 68%, #050812 100%);
+      color: #e2e8f0;
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Consolas, monospace;
+      touch-action: none;
+    }
+
+    /* Native 320x170 ST7789V LCD pixel-perfect rendering */
+    canvas#lcd {
+      width: 100%;
+      height: auto;
+      aspect-ratio: 320 / 170;
+      display: block;
+      background: #1e46a8;
+      border-radius: 4px;
+      image-rendering: pixelated;
+      image-rendering: crisp-edges;
+    }
+
+    /* LILYGO T-Display-S3 PCB Bezel */
+    .tdisplay-pcb {
+      background: linear-gradient(145deg, #1d2334 0%, #101420 55%, #171c2b 100%);
+      border: 1.5px solid #323d58;
+      box-shadow:
+        0 18px 42px rgba(0, 0, 0, 0.76),
+        0 0 26px rgba(104, 176, 240, 0.14),
+        inset 0 1px 1px rgba(255, 255, 255, 0.12);
+    }
+
+    .lcd-well {
+      background: #060812;
+      border: 2px solid #0b0e1c;
+      box-shadow: inset 0 0 10px rgba(0, 0, 0, 0.92), 0 0 0 1px rgba(255, 255, 255, 0.06);
+    }
+
+    .pin-row {
+      display: flex;
+      justify-content: space-between;
+      padding: 0 10px;
+      pointer-events: none;
+    }
+
+    .pin-pad {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: radial-gradient(circle, #302612 35%, #d4a648 45%, #8f6b24 100%);
+      opacity: 0.72;
+    }
+
+    /* Top control bar pill buttons */
+    .pill-btn {
+      background: linear-gradient(180deg, #212c46 0%, #131a2d 100%);
+      border: 1px solid #38496c;
+      box-shadow: 0 3px 8px rgba(0, 0, 0, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.08);
+      transition: transform 0.08s ease, border-color 0.15s ease, box-shadow 0.15s ease, color 0.15s ease;
+      cursor: pointer;
+    }
+
+    .pill-btn:active {
+      transform: scale(0.95);
+    }
+
+    .pill-btn.active {
+      border-color: #68b0f0;
+      color: #b8e4ff;
+      box-shadow: 0 0 12px rgba(104, 176, 240, 0.28), inset 0 1px 0 rgba(255, 255, 255, 0.14);
+    }
+
+    /* Left Virtual Analog Joystick (IO1 / IO2) */
+    .joy-base {
+      background: radial-gradient(circle at 50% 45%, #182138 0%, #0e1424 70%, #090d18 100%);
+      border: 2px solid #2f3d5d;
+      box-shadow: inset 0 6px 16px rgba(0, 0, 0, 0.8), 0 6px 16px rgba(0, 0, 0, 0.45);
+      position: relative;
+      touch-action: none;
+    }
+
+    .joy-ring {
+      border: 1px dashed rgba(184, 228, 255, 0.24);
+    }
+
+    .joy-knob {
+      background: radial-gradient(circle at 35% 30%, #526796 0%, #293654 55%, #161e33 100%);
+      border: 2px solid #738ec4;
+      box-shadow: 0 6px 14px rgba(0, 0, 0, 0.7), inset 0 2px 3px rgba(255, 255, 255, 0.25);
+      will-change: transform;
+    }
+
+    .joy-knob.active {
+      border-color: #68b0f0;
+      box-shadow: 0 0 16px rgba(104, 176, 240, 0.5), inset 0 2px 4px rgba(255, 255, 255, 0.35);
+    }
+
+    /* Tactile Button 1: STRIKE (GPIO 0 / E / F / SHIFT) */
+    .strike-btn {
+      background: radial-gradient(circle at 35% 28%, #273554 0%, #172036 65%, #0d1324 100%);
+      border: 3px solid #495d87;
+      color: #94a3b8;
+      box-shadow: 0 8px 18px rgba(0, 0, 0, 0.65), inset 0 2px 4px rgba(255, 255, 255, 0.14);
+      transition: transform 0.08s ease, box-shadow 0.12s ease, border-color 0.12s ease, background 0.12s ease, color 0.12s ease;
+      touch-action: none;
+      cursor: pointer;
+    }
+
+    .strike-btn.locked {
+      background: radial-gradient(circle at 35% 28%, #54f8ff 0%, #0ea5e9 52%, #0369a1 100%);
+      border-color: #ffffff;
+      color: #0b132b;
+      box-shadow:
+        0 0 26px rgba(84, 248, 255, 0.85),
+        0 4px 12px rgba(0, 0, 0, 0.65),
+        inset 0 3px 6px rgba(255, 255, 255, 0.65);
+    }
+
+    .strike-btn.case1 {
+      background: radial-gradient(circle at 35% 28%, #ffe55c 0%, #f97316 58%, #9a3412 100%);
+      border-color: #fef08a;
+      color: #141933;
+      box-shadow:
+        0 0 28px rgba(249, 115, 22, 0.85),
+        0 4px 12px rgba(0, 0, 0, 0.65),
+        inset 0 3px 6px rgba(255, 255, 255, 0.65);
+    }
+
+    .strike-btn.case3 {
+      background: radial-gradient(circle at 35% 28%, #ff79f6 0%, #c026d3 55%, #701a75 100%);
+      border-color: #ffffff;
+      color: #ffffff;
+      box-shadow:
+        0 0 28px rgba(255, 92, 244, 0.85),
+        0 4px 12px rgba(0, 0, 0, 0.65),
+        inset 0 3px 6px rgba(255, 255, 255, 0.55);
+    }
+
+    .strike-btn:active {
+      transform: scale(0.92);
+    }
+
+    /* Tactile Button 2: SWING (GPIO 14 / SPACE) */
+    .swing-btn {
+      background: radial-gradient(circle at 35% 28%, #e82848 0%, #b51834 55%, #6b0d1f 100%);
+      border: 3px solid #ff7a90;
+      box-shadow:
+        0 10px 24px rgba(232, 40, 72, 0.36),
+        0 4px 10px rgba(0, 0, 0, 0.7),
+        inset 0 3px 6px rgba(255, 255, 255, 0.28);
+      transition: transform 0.08s ease, box-shadow 0.12s ease, border-color 0.12s ease, background 0.12s ease;
+      touch-action: none;
+      cursor: pointer;
+    }
+
+    .swing-btn.pressed {
+      transform: scale(0.94);
+      background: radial-gradient(circle at 35% 28%, #3878d8 0%, #1e46a8 55%, #11296b 100%);
+      border-color: #b8e4ff;
+      box-shadow: 0 0 24px rgba(56, 120, 216, 0.65), inset 0 3px 8px rgba(255, 255, 255, 0.4);
+    }
+
+    .swing-btn.ready {
+      transform: scale(0.95);
+      background: radial-gradient(circle at 35% 28%, #ffe55c 0%, #eab308 55%, #925408 100%);
+      border-color: #fef08a;
+      color: #141933;
+      box-shadow: 0 0 30px rgba(250, 204, 21, 0.85), inset 0 3px 8px rgba(255, 255, 255, 0.55);
+    }
+
+    .swing-btn.perfect {
+      transform: scale(0.97);
+      background: radial-gradient(circle at 35% 28%, #ffffff 0%, #54f8ff 42%, #f59e0b 95%);
+      border-color: #ffffff;
+      color: #101630;
+      box-shadow:
+        0 0 36px rgba(84, 248, 255, 0.95),
+        0 0 18px rgba(255, 229, 92, 0.9),
+        inset 0 3px 10px rgba(255, 255, 255, 0.8);
+    }
+
+    /* Responsive Handheld Layout */
+    .handheld-shell {
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      align-items: center;
+      width: 100%;
+      height: 100dvh;
+      padding: max(8px, env(safe-area-inset-top)) max(10px, env(safe-area-inset-right)) max(12px, env(safe-area-inset-bottom)) max(10px, env(safe-area-inset-left));
+      gap: 6px;
+    }
+
+    .bezel-wrap {
+      width: 100%;
+      max-width: 580px;
+    }
+
+    .controls-row {
+      display: flex;
+      width: 100%;
+      max-width: 580px;
+      justify-content: space-between;
+      align-items: center;
+      padding: 4px 6px 8px 6px;
+      gap: 8px;
+    }
+
+    /* Landscape Smartphone Console Grid */
+    @media (orientation: landscape) and (max-height: 560px) {
+      .handheld-shell {
+        display: grid;
+        grid-template-columns: 132px minmax(240px, 1fr) 186px;
+        grid-template-rows: auto 1fr;
+        align-items: center;
+        justify-items: center;
+        gap: 6px 8px;
+        padding: max(6px, env(safe-area-inset-top)) max(10px, env(safe-area-inset-right)) max(6px, env(safe-area-inset-bottom)) max(10px, env(safe-area-inset-left));
+      }
+      .top-bar {
+        grid-column: 2;
+        grid-row: 1;
+        width: 100%;
+      }
+      .bezel-wrap {
+        grid-column: 2;
+        grid-row: 2;
+        max-width: min(100%, calc((100dvh - 58px) * 1.88));
+        align-self: center;
+      }
+      .controls-row {
+        display: contents;
+      }
+      .left-pad-zone {
+        grid-column: 1;
+        grid-row: 1 / span 2;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+      }
+      .right-btn-zone {
+        grid-column: 3;
+        grid-row: 1 / span 2;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+      }
+      .desktop-hint {
+        display: none;
+      }
+    }
