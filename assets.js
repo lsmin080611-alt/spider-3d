@@ -23,7 +23,14 @@
     const LCD_W = 320;
     const LCD_H = 170;
     const NEAR_Z = 1.6;
-    const RUN_DURATION = 360.0; // 6분 스테이지 카운트다운 (00:00 도달 시 보스전 진입 예정)
+    const RUN_DURATION = 360.0; // 6분 스테이지 카운트다운 (00:00 도달 시 보스전 진입)
+    const BOSS_MAX_HP = 4200;
+    const BOSS_EVADE_DURATION = 40.0;
+    const BOSS_GROGGY_DURATION = 6.5;
+    const BOSS_GROGGY_MAX_HITS = 3;
+    const BOSS_INTRO_DURATION = 2.2;
+    const BOSS_DEATH_DURATION = 1.1;
+    const BOSS_CORE_RADIUS = 21.0;
 
     const GRAVITY = 64.0;
     const AIR_DRAG = 0.055;
