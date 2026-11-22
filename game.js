@@ -48,7 +48,6 @@ let strikeCamBlend = 0;
 let strikeCooldown = 0;
 let strikeGraceTimer = 0; // 공격 직후 반동/관통 이탈 중 몸체 충돌 & 투사체 피격 방지 유예 시간
 let skimTechTimer = 0;    // 벽/바닥 스침·월슬라이드 직후 기술 보너스 유지 타이머
-let skimXpAcc = 0;        // 스킴 지속 경험치 누적 버퍼
 let chainBouncesLeft = 0;
 let chainVisited = [];
 let isChainRush = false;
@@ -79,10 +78,13 @@ let webZapTimer = 0;
 let multiKillCount = 0;
 let multiKillWindow = 0;
 
-// Stage & Scoring State
+// 6분 타이머 & 5단계 스타일 랭크(D/C/B/A/S -> 배경/화력 연동)
 let currentStage = 0;
-let score = 0;
-let bestScore = 0;
+let runTimeRemaining = RUN_DURATION;
+let runTimerZeroTriggered = false;
+let stylePoints = 0.0;
+let styleRankIdx = 0;
+let peakStyleRankIdx = 0;
 let swingCombo = 0;
 let comboTimer = 0;
 let wallSkimIntensity = 0, wallSkimSide = 0, groundSkimIntensity = 0;
@@ -94,24 +96,21 @@ let simTime = 0;
 const keys = {};
 let joyX = 0, joyY = 0, swingHeld = false;
 
-function loadBestScore() {
-  try {
-    const parsed = parseInt(localStorage.getItem(BEST_STORAGE_KEY), 10);
-    if (!Number.isNaN(parsed) && parsed > 0) bestScore = parsed;
-  } catch (e) {}
-}
-
-function saveBestScore(val) {
-  try { localStorage.setItem(BEST_STORAGE_KEY, String(val)); } catch (e) {}
+function formatRunTimer(sec) {
+  const clamped = Math.max(0, Math.ceil(sec - 0.001));
+  const m = Math.floor(clamped / 60);
+  const s = clamped % 60;
+  return String(m).padStart(2, '0') + ':' + String(s).padStart(2, '0');
 }
 
 function setStageIndicator(stageIdx) {
   const cfg = STAGE_CONFIGS[stageIdx] || STAGE_CONFIGS[0];
+  const rank = STYLE_RANKS[stageIdx] || STYLE_RANKS[0];
   if (stageDot) {
     stageDot.className = 'inline-block w-1.5 h-1.5 rounded-full animate-pulse ' + cfg.dotClass;
   }
   if (stageLabel) {
-    stageLabel.textContent = 'PC-98 · ' + cfg.name;
+    stageLabel.textContent = 'PC-98 · [' + rank.label + '] ' + cfg.name;
   }
 }
 
@@ -190,8 +189,8 @@ function clearProjectilesInRadius(cx, cy, cz, radius, sparkCol = PAL.NEON_CYAN) 
   return cleared;
 }
 
-// Unified Enemy Damage & Kill Handler (Supports 3 Tiers, Damage Numbers, Skill XP & Domino Chain!)
-function applyEnemyDamage(e, dmg, col, isCrit = false, dominoDepth = 0, xpMult = 1.0, showOneShot = false) {
+// Unified Enemy Damage & Kill Handler (Supports 3 Tiers, Damage Numbers, Pure Fixed XP & Domino Chain!)
+function applyEnemyDamage(e, dmg, col, isCrit = false, dominoDepth = 0, showOneShot = false) {
   const idx = enemies.indexOf(e);
   if (idx === -1) return false;
 
@@ -209,19 +208,14 @@ function applyEnemyDamage(e, dmg, col, isCrit = false, dominoDepth = 0, xpMult =
     multiKillCount++;
     multiKillWindow = 0.65;
 
-    // 티어별 회복량, 점수, 기본 경험치 차등 지급
+    // 티어별 회복량, 스타일 포인트, 고정 경험치(1.0x 고정) 지급
     const heal = e.tier === 'ELITE' ? 12 : (e.tier === 'MEDIUM' ? 5 : 2);
     hp = Math.min(MAX_HP, hp + heal);
 
-    const basePts = e.tier === 'ELITE' ? 1600 : (e.tier === 'MEDIUM' ? 520 : 180);
-    const cMult = Math.pow(1.38, Math.min(swingCombo, 10));
-    score += Math.round(basePts * cMult);
-    comboTimer = Math.max(comboTimer, 4.4);
+    const killStyle = e.tier === 'ELITE' ? 20 : (e.tier === 'MEDIUM' ? 10 : 3);
+    addStylePoints(killStyle, 4.4);
 
-    // 실력 보너스(xpMult)가 반영된 경험치 수급 (고속/원샷/기술 처치 시 빠른 레벨업)
-    const baseXp = e.tier === 'ELITE' ? 135 : (e.tier === 'MEDIUM' ? 46 : 15);
-    const oneShotBonus = (wasFullHp && e.tier !== 'SWARM') ? 1.30 : 1.0;
-    const earnedXp = Math.max(5, Math.round(baseXp * xpMult * oneShotBonus));
+    const earnedXp = e.tier === 'ELITE' ? 135 : (e.tier === 'MEDIUM' ? 46 : 15);
     gainXp(earnedXp);
 
     const expColA = e.tier === 'ELITE' ? PAL.GOLD
@@ -258,7 +252,7 @@ function applyEnemyDamage(e, dmg, col, isCrit = false, dominoDepth = 0, xpMult =
   }
 }
 
-// 광역 충격파 헬퍼 (초중력 C1 / 체공 예열 / 마찰 과열 / 탄성 반발 / 도미노 폭발 공용)
+// 광역 충격파 헬퍼 (초중력 C1 / 마찰 과열 / 탄성 반발 / 도미노 폭발 / 낙하 운동량 공용)
 function triggerShockwave(cx, cy, cz, radius, dmg, col, ignoreEnemy = null, dominoDepth = 0) {
   shockwaves.push({ x: cx, y: cy, z: cz, r: 5, maxR: radius, life: 0.34, maxLife: 0.34, col });
   clearProjectilesInRadius(cx, cy, cz, radius, col);
@@ -272,41 +266,75 @@ function triggerShockwave(cx, cy, cz, radius, dmg, col, ignoreEnemy = null, domi
     }
   }
   for (let i = 0; i < targets.length; i++) {
-    applyEnemyDamage(targets[i], dmg, col, false, dominoDepth, 1.15, false);
+    applyEnemyDamage(targets[i], dmg, col, false, dominoDepth, false);
   }
 }
 
-function updateStageFromScore() {
-  const targetStage = score >= 15000 ? 2 : (score >= 5000 ? 1 : 0);
-  if (targetStage !== currentStage) {
-    const prev = currentStage;
-    currentStage = targetStage;
+function getStyleRankIndexFromPoints(pts) {
+  for (let i = STYLE_RANKS.length - 1; i >= 0; i--) {
+    if (pts >= STYLE_RANKS[i].minPts) return i;
+  }
+  return 0;
+}
+
+function syncStageFromStyleRank(announce = true) {
+  const targetRank = getStyleRankIndexFromPoints(stylePoints);
+  if (targetRank !== styleRankIdx || targetRank !== currentStage) {
+    const prev = styleRankIdx;
+    styleRankIdx = targetRank;
+    if (styleRankIdx > peakStyleRankIdx) peakStyleRankIdx = styleRankIdx;
+    currentStage = styleRankIdx;
     setStageIndicator(currentStage);
-    if (currentStage > prev) {
-      if (currentStage === 1) {
-        addPopup('SUNSET ZONE!', '#ffb85c', 3);
-        spawnSparks(px, py, pz, PAL.GOLD, 16, 40);
-      } else if (currentStage === 2) {
-        addPopup('NEON NIGHT!', PAL.NEON_CYAN, 3);
-        spawnSparks(px, py, pz, PAL.NEON_PINK, 18, 44);
-      }
+    if (announce && styleRankIdx > prev) {
+      const info = STYLE_RANKS[styleRankIdx];
+      const rankBanners = [
+        'RANK D',
+        'RANK C · AFTERNOON!',
+        'RANK B · SUNSET ZONE!',
+        'RANK A · NEON NIGHT!',
+        'RANK S · OVERDRIVE!!'
+      ];
+      addPopup(rankBanners[styleRankIdx] || ('RANK ' + info.label + '!'), info.col, 3);
+      spawnSparks(px, py, pz, info.col, 14 + styleRankIdx * 2, 34 + styleRankIdx * 4);
     }
   }
 }
 
-function endComboRun(reasonText = null, reasonColor = '#ff6b81') {
-  const currentRun = Math.floor(score);
-  if (currentRun > bestScore) {
-    bestScore = currentRun;
-    saveBestScore(bestScore);
-    addPopup('NEW BEST! ' + bestScore, PAL.GOLD, 3);
-  } else if (reasonText) {
-    addPopup(reasonText, reasonColor, 2);
+function addStylePoints(pts, minComboTimer = 0) {
+  if (pts <= 0 || gameOver) return;
+  stylePoints = Math.min(100.0, stylePoints + pts);
+  if (minComboTimer > 0) {
+    comboTimer = Math.max(comboTimer, minComboTimer);
   }
-  score = 0;
+  syncStageFromStyleRank(true);
+}
+
+// 피격/충돌 시 2단계 랭크 강등 페널티 (S->B, A->C, B/C/D->D)
+function dropStyleRanks(ranks, reasonText = null, reasonColor = '#ff6b81') {
+  const prevRank = styleRankIdx;
+  const targetRank = Math.max(0, prevRank - ranks);
+  if (targetRank === 0) {
+    stylePoints = 0.0;
+  } else {
+    const lo = targetRank * 20.0 + 4.0;
+    const hi = targetRank * 20.0 + 16.0;
+    stylePoints = Math.min(hi, Math.max(lo, stylePoints - ranks * 20.0));
+  }
   swingCombo = 0;
-  comboTimer = 0;
-  updateStageFromScore();
+  comboTimer = targetRank > 0 ? 2.2 : 0.0;
+  syncStageFromStyleRank(false);
+  if (reasonText) {
+    const rankTag = prevRank > targetRank ? (' [RANK ' + STYLE_RANKS[targetRank].label + ']') : '';
+    addPopup(reasonText + rankTag, reasonColor, 2);
+  }
+}
+
+// Step 3 보스전 연동 훅 (06:00 카운트다운 종료 시 1회 발동)
+function onRunTimerZero() {
+  runTimerZeroTriggered = true;
+  shakeMag = Math.max(shakeMag, 4.0);
+  spawnSparks(px, py, pz, PAL.GOLD, 22, 42);
+  addPopup('06:00 BOSS TIME! (READY)', PAL.GOLD, 3);
 }
 
 function clearStrikeState() {
@@ -338,14 +366,12 @@ function takeDamage(amount, reasonText) {
   if (strikeMode === 0) releaseLassoTargets('LASSO BROKEN!');
   clearStrikeState();
   strikeGraceTimer = 0;
-  endComboRun(reasonText + ' -' + amount + 'HP', PAL.CRIMSON);
+  dropStyleRanks(2, reasonText + ' -' + amount + 'HP', PAL.CRIMSON);
   if (hp <= 0) {
     gameOver = true;
     isSwinging = false;
     inPerfectWindow = false;
     lassoTargets = [];
-    const cur = Math.floor(score);
-    if (cur > bestScore) { bestScore = cur; saveBestScore(bestScore); }
   }
 }
 
@@ -602,12 +628,17 @@ function resetGame() {
   homingTarget = null;
   clearStrikeState();
   strikeEntrySpd = 0; strikeEntryDist = 0; strikeMotionIdx = 0; strikeCamBlend = 0; strikeCooldown = 0; strikeGraceTimer = 0;
-  skimTechTimer = 0; skimXpAcc = 0;
+  skimTechTimer = 0;
   auraTickTimer = 0; webZapTimer = 0; multiKillCount = 0; multiKillWindow = 0;
   afterimageTimer = 0; afterimages = [];
   hp = MAX_HP; invulnTimer = 0; damageFlash = 0; gameOver = false;
   wave = 1; kills = 0; waveClearDelay = 0;
-  score = 0; swingCombo = 0; comboTimer = 0;
+  runTimeRemaining = RUN_DURATION;
+  runTimerZeroTriggered = false;
+  stylePoints = 0.0;
+  styleRankIdx = 0;
+  peakStyleRankIdx = 0;
+  swingCombo = 0; comboTimer = 0;
   wallSkimIntensity = 0; wallSkimSide = 0; groundSkimIntensity = 0;
   wallSlideCooldown = 0;
   popups = []; sparks = [];
@@ -643,56 +674,61 @@ function getCase3FreezeDuration(spd) {
   return CASE3_MAX_FREEZE_DUR - (CASE3_MAX_FREEZE_DUR - CASE3_MIN_FREEZE_DUR) * t;
 }
 
-// 실력·가속 비례 데미지 & 경험치 배율 중앙 계산 (타격 판정 및 락온 1-HIT 예고 공용)
+// 전 STRIKE 공용 속도 데미지 스케일링 (상한 캡 없음: 저속 SHIFT 난타 억제 + 초고속 무한 확장)
+// SPD 0~45: 0.70x~1.00x / SPD 45~95: 1.00x~3.20x / SPD 95+: +0.028x per SPD
+function getSpeedDamageMult(spd) {
+  const s = Math.max(0.0, spd);
+  if (s <= 45.0) {
+    return 0.70 + (s / 45.0) * 0.30;
+  }
+  if (s <= 95.0) {
+    const t = (s - 45.0) / 50.0;
+    return 1.00 + Math.pow(t, 1.35) * 2.20;
+  }
+  return 3.20 + (s - 95.0) * 0.028;
+}
+
+// 전 STRIKE(Case1/Case2/Case3/핀볼) 통합 속도·스타일 랭크 데미지 중앙 계산 (타격 판정 및 1-HIT 예고 공용)
 function computeStrikeDamage(mode, entrySpd, entryDist, downVy, isChain) {
   const aug = getAugStats();
+  const rankInfo = STYLE_RANKS[styleRankIdx] || STYLE_RANKS[0];
   let rawDmg = 26.0;
   let skillMult = 1.0;
-  let xpMult = 1.0;
   let isCrit = false;
 
   if (mode === 1) {
-    // Case 1: 고공 하강 내리찍기 -> 초반 노증강에서도 2단계 중형 원샷 가능 + 높은 경험치 배율
+    // Case 1 (SLAM!): 하강·진입 속도 통합 스케일링 + 급강하 가중치 (저속 약낙하 억제, 고속 급강하 폭딜)
     const fallSpd = Math.max(24.0, downVy, peakFallSpeed);
-    rawDmg = 74.0 + Math.min(78.0, Math.max(0, fallSpd - 20.0) * 1.15) + diveCharge * 32.0;
-    xpMult += 0.65;
-    isCrit = rawDmg >= 95.0 || getLv('heavy_suit') >= 3;
+    const effSpd = Math.max(entrySpd, fallSpd * 1.15);
+    rawDmg = 26.0 * getSpeedDamageMult(effSpd) * (1.15 + diveCharge * 0.25);
+    isCrit = effSpd >= 92.0 || getLv('heavy_suit') >= 3;
   } else if (isChain) {
+    // 연쇄 핀볼: 진입 속도 비례 스케일링 적용 (Lv.1~3 기본 계수 16/22/28)
     const cSpec = getChainSpec();
-    rawDmg = cSpec ? cSpec.dmg : 36.0;
-    xpMult += 0.35;
+    const baseChain = cSpec ? cSpec.baseDmg : 16.0;
+    rawDmg = baseChain * getSpeedDamageMult(entrySpd);
+    if (entrySpd >= 95.0) isCrit = true;
   } else {
-    // Case 3: 근접 저속 Shift 난타(45 이하)는 26 dmg 고정, 스윙 가속(95~120+) 시 100+ 폭발 데미지
-    if (entrySpd <= 45.0) {
-      rawDmg = 26.0;
-    } else {
-      const speedNorm = Math.min(1.65, (entrySpd - 45.0) / 53.0);
-      rawDmg = 26.0 + Math.pow(speedNorm, 1.38) * 74.0;
-      if (entrySpd >= 95.0) {
-        isCrit = true;
-        xpMult += 0.75;
-      } else if (entrySpd >= 72.0) {
-        xpMult += 0.30;
-      }
-    }
+    // Case 2 / Case 3: 모든 수동 STRIKE에 통합 속도 배율 적용 (저속 SHIFT 난타 18~26 dmg)
+    rawDmg = 26.0 * getSpeedDamageMult(entrySpd);
+    if (entrySpd >= 95.0) isCrit = true;
     if (entryDist >= 75.0) {
       skillMult *= 1.15;
-      xpMult += 0.20;
     }
   }
 
-  // 초반 노증강 실력 기술 보너스 (퍼펙트 릴리즈 / 벽·바닥 스침 직후 타격)
+  // 초반 노증강 실력 기술 화력 보너스 (퍼펙트 릴리즈 / 벽·바닥 스침 직후 타격)
   if (perfectBuffTimer > 0) {
     skillMult *= 1.35;
-    xpMult += 0.45;
     isCrit = true;
   }
   if (skimTechTimer > 0) {
     skillMult *= 1.25;
-    xpMult += 0.35;
   }
 
-  rawDmg *= skillMult * aug.baseDmgMult;
+  // 스타일 랭크 화력 배율 (D:1.00x / C:1.10x / B:1.22x / A:1.38x / S:1.60x)
+  rawDmg *= skillMult * rankInfo.dmgMult * aug.baseDmgMult;
+  if (styleRankIdx >= 4) isCrit = true;
 
   // [체공 예열]: 순수 단일 STRIKE 극딜 (광역 충격파 제거)
   const airSpec = getAirHeatSpec();
@@ -730,11 +766,8 @@ function computeStrikeDamage(mode, entrySpd, entryDist, downVy, isChain) {
     if (lassoTargets.length >= lassoSpec.awakenCount) isCrit = true;
   }
 
-  xpMult += Math.min(0.60, swingCombo * 0.08);
-
   return {
     dmg: Math.max(10, Math.round(rawDmg)),
-    xpMult: xpMult,
     isCrit: isCrit
   };
 }
@@ -1034,15 +1067,10 @@ function startWebSwing(bList, cList, fromGroundLaunch = false) {
     const boost = curSpd < softBoostCap ? Math.min(rawBoost, softBoostCap - curSpd) : 0.0;
     vx += sinY * boost;
     vz += cosY * boost;
-    const cMult = Math.pow(1.38, Math.min(swingCombo, 10));
-    const divePts = Math.round((140 + diveCharge * 260) * lowBonus * cMult);
-    const diveXp = Math.round((14 + diveCharge * 20) * lowBonus);
-    score += divePts;
-    gainXp(diveXp);
-    comboTimer = Math.max(comboTimer, 3.8);
+    addStylePoints(Math.round(10 * lowBonus), 3.8);
     shakeMag = Math.max(shakeMag, 2.4);
     spawnSparks(px, py, pz, PAL.NEON_CYAN, 12, 32);
-    addPopup('DIVE BOOST! +' + diveXp + 'XP', PAL.NEON_CYAN, 2);
+    addPopup('DIVE BOOST!', PAL.NEON_CYAN, 2);
     diveCharge = 0;
     isDiving = false;
   }
@@ -1137,16 +1165,13 @@ function onSwingUp() {
           spawnSparks(px, py, pz, PAL.EMERALD, 6, 26);
         }
 
-        const pts = Math.round((440 + swingDepth * 4.0) * Math.pow(1.38, Math.min(swingCombo, 10)));
-        const perfXp = Math.round(24 + depthRatio * 14);
-        score += pts;
-        gainXp(perfXp);
+        addStylePoints(12, 4.6);
         afterimageTimer = 0.85;
         afterimages = [];
         shakeMag = Math.max(shakeMag, 2.8);
         spawnSparks(px, py, pz, PAL.GOLD, 10, 34);
         spawnSparks(px, py, pz, PAL.NEON_CYAN, 8, 30);
-        addPopup('PERFECT!! +' + perfXp + 'XP', PAL.NEON_CYAN, 3);
+        addPopup('PERFECT RELEASE!!', PAL.NEON_CYAN, 3);
       } else {
         const upwardKick = (6.0 + depthRatio * 6.0) * aug.bungeeBounce;
         const targetVy = Math.min(64.0 * aug.bungeeBounce, vy + upwardKick);
@@ -1159,9 +1184,12 @@ function onSwingUp() {
           vz += cosY * fwdAdd;
         }
 
-        const pts = Math.round((90 + swingDepth * 2.2) * Math.pow(1.38, Math.min(swingCombo, 10)));
-        score += pts;
-        if (swingDepth > 55) addPopup('BIG ARC +' + pts, PAL.GOLD, 1);
+        if (swingDepth > 55) {
+          addStylePoints(5, 4.6);
+          addPopup('BIG ARC!', PAL.GOLD, 1);
+        } else {
+          addStylePoints(2, 4.6);
+        }
       }
 
       doingFlip = true;
@@ -1281,9 +1309,9 @@ function handleBuildingsCollisionAndProximity(bList) {
             if (wallSlideCooldown <= 0 && hSpd > 26) {
               wallSlideCooldown = 0.42;
               skimTechTimer = 2.2;
-              gainXp(10);
+              addStylePoints(6, 3.2);
               spawnSparks(px, py, pz, '#b8e4ff', 7, 22);
-              addPopup('WALL SLIDE! +10XP', '#b8e4ff', 1);
+              addPopup('WALL SLIDE!', '#b8e4ff', 1);
               shakeMag = Math.max(shakeMag, 1.3);
             }
           }
@@ -1459,14 +1487,12 @@ function updateCombat(dt, oldX, oldY, oldZ, bList, totalSpeed) {
     }
   }
 
-  // 웨이브 클리어 체크 (클리어 시 대량 보너스 XP + HP 회복 후 다음 웨이브 스폰)
+  // 웨이브 클리어 체크 (클리어 시 고정 보너스 XP + HP 회복 후 다음 웨이브 스폰)
   if (enemies.length === 0) {
     if (waveClearDelay <= 0) {
       waveClearDelay = 1.25;
       hp = Math.min(MAX_HP, hp + 15);
-      const waveBonus = 700 * wave;
       const clearXp = 90 + wave * 25;
-      score += waveBonus;
       gainXp(clearXp);
       addPopup('WAVE ' + wave + ' CLEAR! +' + clearXp + 'XP', PAL.EMERALD, 3);
       spawnExplosion(px, py + 4, pz, PAL.GOLD, PAL.NEON_CYAN, 24);
@@ -1509,7 +1535,7 @@ function updateCombat(dt, oldX, oldY, oldZ, bList, totalSpeed) {
         const dmg = targetE.tier === 'SWARM' ? (baseAuraDmg * 2) : baseAuraDmg;
         const boltCol = overcharge ? PAL.GOLD : PAL.NEON_CYAN;
         spawnLightningBolt(px, py, pz, targetE.x, targetE.y, targetE.z, boltCol, 0.16);
-        const killed = applyEnemyDamage(targetE, dmg, boltCol, overcharge, 0, 1.20, false);
+        const killed = applyEnemyDamage(targetE, dmg, boltCol, overcharge, 0, false);
         if (killed) auraKills++;
 
         // Lv.3 각성: 초고속(95+) 시 피격 적에서 반경 65m 주변 2기에게 연쇄 번개 방전
@@ -1522,7 +1548,7 @@ function updateCombat(dt, oldX, oldY, oldZ, bList, totalSpeed) {
             if (Math.hypot(sub.x - targetE.x, sub.y - targetE.y, sub.z - targetE.z) <= 65.0) {
               arcCount++;
               spawnLightningBolt(targetE.x, targetE.y, targetE.z, sub.x, sub.y, sub.z, PAL.GOLD, 0.16);
-              if (applyEnemyDamage(sub, sub.tier === 'SWARM' ? arcDmg * 2 : arcDmg, PAL.GOLD, false, 0, 1.15, false)) {
+              if (applyEnemyDamage(sub, sub.tier === 'SWARM' ? arcDmg * 2 : arcDmg, PAL.GOLD, false, 0, false)) {
                 auraKills++;
               }
             }
@@ -1677,7 +1703,7 @@ function updateCombat(dt, oldX, oldY, oldZ, bList, totalSpeed) {
         hitStopTimer = curMode === 1 ? 0.055 : (isCrit ? 0.052 : (isChainRush ? 0.032 : 0.038));
         shakeMag = Math.max(shakeMag, curMode === 1 ? 4.8 : (isCrit ? 4.4 : 3.2));
         swingCombo = Math.min(12, swingCombo + 1);
-        comboTimer = 5.0;
+        addStylePoints((curMode === 1 || strikeEntrySpd >= 95.0) ? 12 : 8, 5.0);
         afterimageTimer = 0.75;
 
         // 타격 직후 0.65초 공격 보호 유예 + 타격 지점 영거리 투사체 소거 (초중력 Lv.3 SLAM은 95m 광역 소거!)
@@ -1689,7 +1715,7 @@ function updateCombat(dt, oldX, oldY, oldZ, bList, totalSpeed) {
         const projClearR = (curMode === 1 && lvHeavy >= 3) ? 95.0 : 28.0;
         clearProjectilesInRadius(targetX, targetY, targetZ, projClearR, impactCol);
 
-        const killed = applyEnemyDamage(e, dmg, impactCol, isCrit, 0, calc.xpMult, true);
+        const killed = applyEnemyDamage(e, dmg, impactCol, isCrit, 0, true);
         if (refillElasticCharges()) {
           spawnSparks(targetX, targetY, targetZ, PAL.EMERALD, 6, 26);
         }
@@ -1718,7 +1744,7 @@ function updateCombat(dt, oldX, oldY, oldZ, bList, totalSpeed) {
             te.y = targetY + (Math.random() - 0.5) * 6.0;
             te.z = targetZ + (Math.random() - 0.5) * 6.0;
             if (te !== e) {
-              applyEnemyDamage(te, boomDmg, awakened ? PAL.GOLD : '#a78bfa', awakened, 0, 1.35, false);
+              applyEnemyDamage(te, boomDmg, awakened ? PAL.GOLD : '#a78bfa', awakened, 0, false);
             }
           }
           triggerShockwave(targetX, targetY, targetZ, Math.min(160.0, boomR), boomDmg, awakened ? PAL.GOLD : '#a78bfa', e, 0);
@@ -1882,11 +1908,9 @@ function updateCombat(dt, oldX, oldY, oldZ, bList, totalSpeed) {
     const checkR = isStrikeProtected ? 12.5 : 6.8;
     if (d < checkR) {
       if (isStrikeProtected) {
-        const pts = Math.round(140 * Math.pow(1.3, Math.min(swingCombo, 8)));
-        score += pts;
-        comboTimer = Math.max(comboTimer, 3.8);
+        addStylePoints(10, 3.8);
         spawnSparks(pr.x, pr.y, pr.z, PAL.NEON_CYAN, 10, 32);
-        addPopup('DEFLECT! +' + pts, PAL.NEON_CYAN, 1);
+        addPopup('DEFLECT!', PAL.NEON_CYAN, 1);
         projectiles.splice(i, 1);
       } else {
         spawnSparks(pr.x, pr.y, pr.z, PAL.CRIMSON, 12, 28);
@@ -2102,7 +2126,7 @@ function drawPC98Face(corners, isSunlit, b, d2, cb, faceIdx, stageCfg, stagePat)
         const u1 = u0 + winW;
         const hash = ((b.seed + r * 31 + c * 17 + faceIdx * 13) & 15);
         let paneCol;
-        if (currentStage === 2) {
+        if (currentStage >= 3) {
           paneCol = hash < 5 ? theme.winSky : (hash < 10 ? theme.winWarm : theme.winDark);
         } else {
           paneCol = hash < 5 ? theme.winSky : (hash < 12 ? theme.winDark : theme.winWarm);
@@ -2127,7 +2151,7 @@ function drawPC98Face(corners, isSunlit, b, d2, cb, faceIdx, stageCfg, stagePat)
   } else if (d2 < 430 * 430) {
     for (let i = 1; i <= 5; i++) {
       const v = 0.18 + i * 0.14;
-      const bandCol = currentStage === 2
+      const bandCol = currentStage >= 3
         ? ((i & 1) ? theme.winSky : theme.winWarm)
         : (isSunlit ? theme.winSky : theme.winDark);
       drawClippedLine3D(bilerp(0.08, v), bilerp(0.92, v), cb, bandCol, 1);
@@ -2172,7 +2196,8 @@ function drawPC98Building(b, d2, cb, stageCfg, stagePat) {
   }
   if (b.hasSpire && d2 < 460 * 460) {
     drawClippedLine3D([b.bx, h + 10, b.bz], [b.bx, h + 42, b.bz], cb, PAL.INDIGO_OUTLINE, 2);
-    drawClippedLine3D([b.bx, h + 10, b.bz], [b.bx, h + 42, b.bz], cb, currentStage === 2 ? '#ff5cf4' : '#e2ecff', 1);
+    const spireCol = currentStage === 4 ? PAL.GOLD : (currentStage === 3 ? '#ff5cf4' : '#e2ecff');
+    drawClippedLine3D([b.bx, h + 10, b.bz], [b.bx, h + 42, b.bz], cb, spireCol, 1);
   }
 }
 
@@ -2318,7 +2343,7 @@ function drawEnemyRadarHUD() {
   let relYaw = (targetYaw - camLagYaw + Math.PI) % (2 * Math.PI) - Math.PI;
   if (relYaw < -Math.PI) relYaw += 2 * Math.PI;
 
-  const axC = 152, ayC = 14 + Math.round(Math.sin(simTime * 7) * 1.2);
+  const axC = 156, ayC = 29 + Math.round(Math.sin(simTime * 7) * 1.1);
   const arrowCol = (strikeTarget || homingTarget) ? PAL.NEON_CYAN : (focusTarget.tier === 'ELITE' ? PAL.GOLD : PAL.CRIMSON);
 
   ctx.save();
@@ -2326,19 +2351,19 @@ function drawEnemyRadarHUD() {
   ctx.rotate(relYaw);
   ctx.fillStyle = PAL.INDIGO_OUTLINE;
   ctx.beginPath();
-  ctx.moveTo(0, -10); ctx.lineTo(9, 0); ctx.lineTo(4.5, 0);
-  ctx.lineTo(4.5, 8); ctx.lineTo(-4.5, 8); ctx.lineTo(-4.5, 0); ctx.lineTo(-9, 0);
+  ctx.moveTo(0, -8.5); ctx.lineTo(7.5, 0); ctx.lineTo(3.8, 0);
+  ctx.lineTo(3.8, 7); ctx.lineTo(-3.8, 7); ctx.lineTo(-3.8, 0); ctx.lineTo(-7.5, 0);
   ctx.closePath(); ctx.fill();
 
   ctx.fillStyle = arrowCol;
   ctx.beginPath();
-  ctx.moveTo(0, -8); ctx.lineTo(7, -1); ctx.lineTo(3, -1);
-  ctx.lineTo(3, 6.5); ctx.lineTo(-3, 6.5); ctx.lineTo(-3, -1); ctx.lineTo(-7, -1);
+  ctx.moveTo(0, -7); ctx.lineTo(6, -1); ctx.lineTo(2.5, -1);
+  ctx.lineTo(2.5, 5.5); ctx.lineTo(-2.5, 5.5); ctx.lineTo(-2.5, -1); ctx.lineTo(-6, -1);
   ctx.closePath(); ctx.fill();
 
   ctx.fillStyle = '#ffffff';
   ctx.beginPath();
-  ctx.moveTo(0, -8); ctx.lineTo(0, 6.5); ctx.lineTo(-3, 6.5); ctx.lineTo(-3, -1); ctx.lineTo(-7, -1);
+  ctx.moveTo(0, -7); ctx.lineTo(0, 5.5); ctx.lineTo(-2.5, 5.5); ctx.lineTo(-2.5, -1); ctx.lineTo(-6, -1);
   ctx.closePath(); ctx.fill();
   ctx.restore();
 
@@ -2348,12 +2373,12 @@ function drawEnemyRadarHUD() {
   const tw = ctx.measureText(distStr).width;
   const bx = Math.round(axC - tw * 0.5 - 3);
   ctx.fillStyle = '#121936';
-  ctx.fillRect(bx, 24, Math.round(tw + 6), 10);
+  ctx.fillRect(bx, 38, Math.round(tw + 6), 10);
   ctx.strokeStyle = arrowCol;
   ctx.lineWidth = 1;
-  ctx.strokeRect(bx + 0.5, 24.5, Math.round(tw + 5), 9);
+  ctx.strokeRect(bx + 0.5, 38.5, Math.round(tw + 5), 9);
   ctx.fillStyle = '#ffffff';
-  ctx.fillText(distStr, bx + 3, 32);
+  ctx.fillText(distStr, bx + 3, 46);
 }
 
 // 화면 밖 주요 적 테두리 방향 마커 (최대 3개: ELITE > 최인접 MEDIUM > 최인접 SWARM, ESP32-S3 초경량 벡터)
@@ -2628,6 +2653,13 @@ function tick(now) {
     const aug = getAugStats();
     simTime += dt;
 
+    if (runTimeRemaining > 0) {
+      runTimeRemaining = Math.max(0.0, runTimeRemaining - dt);
+      if (runTimeRemaining <= 0 && !runTimerZeroTriggered) {
+        onRunTimerZero();
+      }
+    }
+
     if (wallSlideCooldown > 0) wallSlideCooldown -= dt;
     if (strikeCooldown > 0) strikeCooldown -= dt;
     if (strikeGraceTimer > 0) strikeGraceTimer = Math.max(0, strikeGraceTimer - dt);
@@ -2665,8 +2697,15 @@ function tick(now) {
     }
 
     if (comboTimer > 0) {
-      comboTimer -= dt;
-      if (comboTimer <= 0 && !isSwinging && strikeMode === 0) endComboRun();
+      comboTimer = Math.max(0.0, comboTimer - dt);
+    } else if (!isSwinging && strikeMode === 0) {
+      if (stylePoints > 0) {
+        stylePoints = Math.max(0.0, stylePoints - 14.0 * dt);
+        syncStageFromStyleRank(false);
+        if (stylePoints <= 0) swingCombo = 0;
+      } else if (swingCombo > 0) {
+        swingCombo = 0;
+      }
     }
 
     if (autoCatchAfterJump && swingHeld && !isSwinging && py > 13.5) {
@@ -3092,10 +3131,9 @@ function tick(now) {
       }
     }
 
-    // Non-linear Wall Skim & Ground Skim Scoring (+ 마찰 과열 & XP 성장 연동)
+    // Non-linear Wall Skim & Ground Skim Style Gauge (+ 마찰 과열 연동)
     const fricSpecTick = getFricHeatSpec();
     const maxSkimSpd = (BASE_SWING_MAX_SPD + 10.0) * aug.maxSpeedMult;
-    const comboMult = Math.pow(1.38, Math.min(swingCombo, 10));
     let isSkimmingNow = false;
 
     if (minWallDist < 14.5 && totalSpeed > 26.0 && py > 4.0) {
@@ -3117,9 +3155,7 @@ function tick(now) {
         }
       }
 
-      score += Math.pow(wNorm, 3.0) * 950.0 * comboMult * dt;
-      skimXpAcc += (5.0 + wNorm * 14.0) * dt;
-      comboTimer = Math.max(comboTimer, 3.0);
+      addStylePoints((6.0 + wNorm * 8.0) * dt, 3.0);
 
       if (wNorm > 0.65 && Math.random() < 0.45) {
         const rightX = Math.cos(camYaw), rightZ = -Math.sin(camYaw);
@@ -3145,15 +3181,11 @@ function tick(now) {
         frictionCharge = Math.min(1.5, frictionCharge + dt * fricSpecTick.chargeRate);
       }
 
-      const gPts = Math.pow(gNorm, 3.0) * 1150.0 * comboMult * dt;
-      score += gPts;
-      skimXpAcc += (6.0 + gNorm * 16.0) * dt;
-      comboTimer = Math.max(comboTimer, 3.0);
+      addStylePoints((6.0 + gNorm * 8.0) * dt, 3.0);
 
       if (wallSkimIntensity > 0.35 && gNorm > 0.45) {
-        score += (gPts + Math.pow(wallSkimIntensity, 3.0) * 950.0 * comboMult * dt);
-        skimXpAcc += 14.0 * dt;
-        addPopup('CANYON RUSH!! x2', PAL.GOLD, 2);
+        addStylePoints(8.0 * dt, 3.0);
+        addPopup('CANYON RUSH!!', PAL.GOLD, 2);
       } else if (gNorm > 0.65) {
         addPopup('DANGER GROUND SKIM!', PAL.GOLD, 1);
       }
@@ -3176,23 +3208,15 @@ function tick(now) {
         if (fireHits.length > 0) {
           shockwaves.push({ x: px, y: py, z: pz, r: 5, maxR: 48.0, life: 0.22, maxLife: 0.22, col: PAL.CRIMSON });
           for (let i = 0; i < fireHits.length; i++) {
-            applyEnemyDamage(fireHits[i], 22, PAL.CRIMSON, false, 0, 1.15, false);
+            applyEnemyDamage(fireHits[i], 22, PAL.CRIMSON, false, 0, false);
           }
         }
       }
     }
 
-    if (skimXpAcc >= 1.0) {
-      const grant = Math.floor(skimXpAcc);
-      skimXpAcc -= grant;
-      gainXp(grant);
-    }
-
     if (!isSkimmingNow && frictionCharge > 0) {
       frictionCharge = Math.max(0.0, frictionCharge - 0.18 * dt);
     }
-
-    updateStageFromScore();
 
     for (let i = sparks.length - 1; i >= 0; i--) {
       const s = sparks[i];
@@ -3314,7 +3338,6 @@ function tick(now) {
 
   const horizSpeed = Math.hypot(vx, vz);
   const totalSpeed = Math.hypot(horizSpeed, vy);
-  const comboMult = Math.pow(1.38, Math.min(swingCombo, 10));
 
   const totalShake = shakeMag + (groundSkimIntensity > 0.55 ? groundSkimIntensity * 1.4 : 0) + (wallSkimIntensity > 0.6 ? wallSkimIntensity * 1.2 : 0);
   const sx = (!isFrozen && totalShake > 0.2) ? (Math.random() - 0.5) * totalShake * 2 : 0;
@@ -3755,17 +3778,18 @@ function tick(now) {
   ctx.fillStyle = '#ffffff';
   ctx.fillText('ALT:' + altStr + 'm SPD:' + spdStr, 7, 37);
 
-  // LV / XP 성장 게이지
+  // LV / XP 성장 게이지 (12픽 만렙 도달 시 MAX 금색 강조)
+  const isBuildMax = totalAugmentsPicked >= MAX_AUG_SLOTS * MAX_AUG_LEVEL;
   const xpRatio = Math.max(0, Math.min(1, playerXp / Math.max(1, xpToNext)));
-  drawPC98Box(4, 44, 114, 11, PAL.NEON_CYAN);
+  drawPC98Box(4, 44, 114, 11, isBuildMax ? PAL.GOLD : PAL.NEON_CYAN);
   ctx.font = 'bold 7.5px Consolas, monospace';
   ctx.fillStyle = PAL.GOLD;
-  ctx.fillText('LV' + playerLevel, 7, 52);
+  ctx.fillText(isBuildMax ? 'MAX' : ('LV' + playerLevel), 7, 52);
   ctx.fillStyle = '#18203c';
   ctx.fillRect(28, 47, 85, 5);
-  ctx.fillStyle = (perfectBuffTimer > 0 || skimTechTimer > 0) ? PAL.GOLD : PAL.NEON_CYAN;
+  ctx.fillStyle = isBuildMax ? PAL.GOLD : PAL.NEON_CYAN;
   ctx.fillRect(28, 47, Math.round(xpRatio * 85), 5);
-  ctx.strokeStyle = '#68b0f0';
+  ctx.strokeStyle = isBuildMax ? PAL.GOLD : '#68b0f0';
   ctx.strokeRect(27.5, 46.5, 86, 6);
 
   if (diveCharge > 0.02) {
@@ -3777,22 +3801,50 @@ function tick(now) {
     ctx.fillRect(28, 60, Math.round(diveCharge * 84), 4);
   }
 
+  // 중앙 상단 6분(06:00) 카운트다운 타이머 박스
+  const timerWarn = runTimeRemaining <= 20.0 && runTimeRemaining > 0.0;
+  const timerBlink = timerWarn && ((Math.floor(performance.now() / 220) & 1) === 0);
+  const timerCol = runTimeRemaining <= 0.0 ? PAL.GOLD : (timerWarn ? (timerBlink ? '#ffffff' : PAL.CRIMSON) : (runTimeRemaining <= 60.0 ? PAL.GOLD : '#ffffff'));
+  const timerBorder = runTimeRemaining <= 0.0 ? PAL.GOLD : (timerWarn ? PAL.CRIMSON : (runTimeRemaining <= 60.0 ? PAL.GOLD : PAL.NEON_CYAN));
+  drawPC98Box(127, 4, 58, 15, timerBorder);
+  ctx.textAlign = 'center';
+  ctx.font = 'bold 10px Consolas, monospace';
+  ctx.fillStyle = timerCol;
+  ctx.fillText(formatRunTimer(runTimeRemaining), 156, 15);
+  ctx.textAlign = 'left';
+
   drawEnemyRadarHUD();
 
-  drawPC98Box(LCD_W - 126, 4, 110, 44, swingCombo >= 3 ? PAL.GOLD : '#8fb8e6');
+  // 우측 상단 웨이브 · 5단계 스타일 랭크(D/C/B/A/S) · 화력 배율 박스
+  const rankInfo = STYLE_RANKS[styleRankIdx] || STYLE_RANKS[0];
+  const rankProgress = styleRankIdx >= STYLE_RANKS.length - 1
+    ? Math.max(0.0, Math.min(1.0, (stylePoints - rankInfo.minPts) / 20.0))
+    : Math.max(0.0, Math.min(1.0, (stylePoints - rankInfo.minPts) / 20.0));
+  drawPC98Box(LCD_W - 126, 4, 110, 44, styleRankIdx >= 2 ? rankInfo.col : '#8fb8e6');
   ctx.font = 'bold 8px Consolas, monospace';
   ctx.fillStyle = PAL.NEON_CYAN;
   ctx.fillText('W' + wave + ' FOES:' + String(enemies.length).padStart(2, ' ') + ' K:' + kills, LCD_W - 121, 13);
-  ctx.fillStyle = '#cceeff';
-  ctx.fillText('BEST ' + String(bestScore).padStart(8, '0'), LCD_W - 121, 22);
-  ctx.fillStyle = PAL.GOLD;
-  ctx.fillText('NOW  ' + String(Math.floor(score)).padStart(8, '0'), LCD_W - 121, 31);
-  ctx.fillStyle = swingCombo > 0 ? '#68b0f0' : '#8fb8e6';
-  ctx.fillText('COMBO x' + swingCombo + ' (' + comboMult.toFixed(1) + 'x)', LCD_W - 121, 41);
 
-  if (comboTimer > 0 && (swingCombo > 0 || score > 0)) {
+  ctx.fillStyle = rankInfo.col;
+  ctx.fillText('RANK ' + rankInfo.label + '  DMG ' + rankInfo.dmgMult.toFixed(2) + 'x', LCD_W - 121, 23);
+
+  // 스타일 랭크 게이지 바
+  ctx.fillStyle = '#18203c';
+  ctx.fillRect(LCD_W - 122, 26, 102, 4);
+  ctx.fillStyle = rankInfo.col;
+  ctx.fillRect(LCD_W - 122, 26, Math.round(rankProgress * 102), 4);
+  ctx.strokeStyle = '#475569';
+  ctx.strokeRect(LCD_W - 122.5, 25.5, 103, 5);
+
+  const pickTxt = overpowerStacks > 0
+    ? ('PWR+' + (overpowerStacks * 5) + '%')
+    : ('PK ' + Math.min(12, totalAugmentsPicked) + '/12');
+  ctx.fillStyle = swingCombo > 0 ? '#cceeff' : '#8fb8e6';
+  ctx.fillText('CMB x' + String(swingCombo).padEnd(2, ' ') + ' ' + pickTxt, LCD_W - 121, 39);
+
+  if (comboTimer > 0 && stylePoints > 0) {
     const cw = Math.min(102, (comboTimer / 4.6) * 102);
-    ctx.fillStyle = PAL.GOLD;
+    ctx.fillStyle = rankInfo.col;
     ctx.fillRect(LCD_W - 122, 44, cw | 0, 2);
   }
 
@@ -3804,7 +3856,7 @@ function tick(now) {
     const pop = popups[i];
     ctx.font = 'bold 10px Consolas, monospace';
     const tw = ctx.measureText(pop.text).width;
-    const pyText = 52 + i * 14;
+    const pyText = 60 + i * 14;
     drawPC98Box((LCD_W * 0.5 - tw * 0.5 - 5) | 0, pyText - 10, (tw + 10) | 0, 13, pop.color);
     ctx.fillStyle = pop.color;
     ctx.fillText(pop.text, (LCD_W * 0.5 - tw * 0.5) | 0, pyText);
@@ -3833,7 +3885,7 @@ function tick(now) {
     ctx.fillStyle = 'rgba(10, 14, 30, 0.62)';
     ctx.fillRect(0, 0, LCD_W, LCD_H);
 
-    const bw = 204, bh = 98;
+    const bw = 216, bh = 104;
     const bx = (LCD_W - bw) >> 1, by = (LCD_H - bh) >> 1;
     drawPC98Box(bx, by, bw, bh, PAL.CRIMSON);
     ctx.strokeStyle = PAL.GOLD;
@@ -3842,18 +3894,22 @@ function tick(now) {
     ctx.textAlign = 'center';
     ctx.font = 'bold 13px Consolas, monospace';
     ctx.fillStyle = PAL.CRIMSON;
-    ctx.fillText('SYSTEM DOWN!', LCD_W * 0.5, by + 22);
+    ctx.fillText('SYSTEM DOWN!', LCD_W * 0.5, by + 20);
 
-    ctx.font = 'bold 9.5px Consolas, monospace';
+    const peakInfo = STYLE_RANKS[peakStyleRankIdx] || STYLE_RANKS[0];
+    ctx.font = 'bold 9px Consolas, monospace';
     ctx.fillStyle = '#ffffff';
-    ctx.fillText('WAVE REACHED : ' + wave + '   KILLS : ' + kills, LCD_W * 0.5, by + 42);
-    ctx.fillStyle = PAL.GOLD;
-    ctx.fillText('ALL-TIME BEST: ' + String(bestScore).padStart(8, '0'), LCD_W * 0.5, by + 58);
+    ctx.fillText('TIME LEFT: ' + formatRunTimer(runTimeRemaining) + '   WAVE: ' + wave, LCD_W * 0.5, by + 38);
+    ctx.fillStyle = PAL.NEON_CYAN;
+    ctx.fillText('LV.' + playerLevel + ' (' + Math.min(12, totalAugmentsPicked) + '/12)   KILLS: ' + kills, LCD_W * 0.5, by + 53);
+    ctx.fillStyle = peakInfo.col;
+    const pwrSuffix = overpowerStacks > 0 ? ('  PWR+' + (overpowerStacks * 5) + '%') : '';
+    ctx.fillText('PEAK RANK: ' + peakInfo.label + pwrSuffix, LCD_W * 0.5, by + 68);
 
     if (Math.floor(performance.now() / 420) & 1) {
       ctx.font = 'bold 9px Consolas, monospace';
-      ctx.fillStyle = PAL.NEON_CYAN;
-      ctx.fillText('PRESS SPACE / TAP TO RETRY', LCD_W * 0.5, by + 84);
+      ctx.fillStyle = PAL.GOLD;
+      ctx.fillText('PRESS SPACE / TAP TO RETRY', LCD_W * 0.5, by + 91);
     }
     ctx.textAlign = 'left';
   }
@@ -4044,7 +4100,6 @@ function initApp() {
     joyBase        = document.getElementById('joy-base');
     joyKnob        = document.getElementById('joy-knob');
 
-    loadBestScore();
     bakeAllStagePatterns();
     for (let s = 0; s < STAGE_CONFIGS.length; s++) {
       cloud2Sprites.push(bakeCloud2Sprite(STAGE_CONFIGS[s].cloudCols));

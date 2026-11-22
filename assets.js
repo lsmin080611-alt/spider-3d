@@ -23,7 +23,7 @@
     const LCD_W = 320;
     const LCD_H = 170;
     const NEAR_Z = 1.6;
-    const BEST_STORAGE_KEY = 'sm_pc98_combat_best';
+    const RUN_DURATION = 360.0; // 6분 스테이지 카운트다운 (00:00 도달 시 보스전 진입 예정)
 
     const GRAVITY = 64.0;
     const AIR_DRAG = 0.055;
@@ -37,6 +37,14 @@
     const CASE3_MIN_SPEED = 20.0;
     const CASE3_MAX_FREEZE_DUR = 0.46;
     const CASE3_MIN_FREEZE_DUR = 0.08;
+
+    const STYLE_RANKS = [
+      { label: 'D', minPts: 0,  dmgMult: 1.00, col: '#8fb8e6' },
+      { label: 'C', minPts: 20, dmgMult: 1.10, col: '#54f8ff' },
+      { label: 'B', minPts: 40, dmgMult: 1.22, col: '#ff9436' },
+      { label: 'A', minPts: 60, dmgMult: 1.38, col: '#ff5cf4' },
+      { label: 'S', minPts: 80, dmgMult: 1.60, col: '#ffe55c' }
+    ];
 
     const BAYER4 = [
       [ 0,  8,  2, 10],
@@ -67,9 +75,10 @@
     };
 
     const STAGE_CONFIGS = [
+      // Rank D (0): 청명한 낮
       {
         name: 'SUMMER DAY',
-        dotClass: 'bg-emerald-400',
+        dotClass: 'bg-sky-400',
         skyTop: '#1e46a8',
         shadowCol: '#182246',
         shadowStretchX: 0.45,
@@ -88,6 +97,29 @@
           { sunA: '#92a2bc', sunB: '#70829e', shA: '#526280', shB: '#3a4866', roofA: '#7a8ca6', roofB: '#5e708c', trim: '#cad8ec', trimSh: '#6e809e', frame: '#141c38', winSky: '#76c8f4', winDark: '#1e3258', winWarm: '#ffe282', sill: '#d8f2ff', lobby: '#1e2438' }
         ]
       },
+      // Rank C (1): 황금빛 오후
+      {
+        name: 'AMBER AFTERNOON',
+        dotClass: 'bg-cyan-400',
+        skyTop: '#243b8c',
+        shadowCol: '#1f1c42',
+        shadowStretchX: 0.58,
+        shadowStretchZ: 0.36,
+        asphaltA: '#3a3858', asphaltB: '#4c466c',
+        asphaltFarA: '#62567c', asphaltFarB: '#7c6a8e',
+        sidewalkA: '#b8a8be', sidewalkB: '#d6c4d0', sidewalkEdge: '#5c5270',
+        parkA: '#469450', parkB: '#2d6840', parkHi: '#80be62', parkEdge: '#224434',
+        laneCol: '#ffe052', crossCol: '#fff0d8',
+        cloudCols: ['#fff6d8', '#ffd09c', '#a896c8', '#24204a'],
+        bldgThemes: [
+          { sunA: '#edd09c', sunB: '#d6ac74', shA: '#8c6c6e', shB: '#664c56', roofA: '#cea884', roofB: '#aa8468', trim: '#fff4cc', trimSh: '#a48278', frame: '#201e42', winSky: '#9ed0f4', winDark: '#2a305c', winWarm: '#ffee9c', sill: '#fff8dc', lobby: '#281e36' },
+          { sunA: '#9ec0d8', sunB: '#7698bc', shA: '#4e5c8a', shB: '#364068', roofA: '#8098b4', roofB: '#607898', trim: '#d8e8f8', trimSh: '#6e7ca4', frame: '#1c2042', winSky: '#bce0f8', winDark: '#24325c', winWarm: '#fff2aa', sill: '#fff8e4', lobby: '#202242' },
+          { sunA: '#d87052', sunB: '#b44e3c', shA: '#763646', shB: '#522236', roofA: '#a45850', roofB: '#824040', trim: '#f8bc9c', trimSh: '#8e5058', frame: '#221834', winSky: '#98c4e4', winDark: '#2c2c52', winWarm: '#ffe68c', sill: '#fff0d0', lobby: '#2c1a2c' },
+          { sunA: '#e8dcd4', sunB: '#cabcb8', shA: '#827c9c', shB: '#605c7c', roofA: '#c6bcb8', roofB: '#a49ca0', trim: '#fff8ee', trimSh: '#948ea8', frame: '#202044', winSky: '#a8d4f4', winDark: '#2c3460', winWarm: '#fff2a8', sill: '#ffffff', lobby: '#282640' },
+          { sunA: '#a4a0b8', sunB: '#827e9c', shA: '#545276', shB: '#3c3a5c', roofA: '#8884a0', roofB: '#6a6886', trim: '#dad4e8', trimSh: '#727092', frame: '#1a1c38', winSky: '#92c4e8', winDark: '#242c54', winWarm: '#ffe688', sill: '#e8f0ff', lobby: '#202036' }
+        ]
+      },
+      // Rank B (2): 불타는 노을
       {
         name: 'GOLDEN SUNSET',
         dotClass: 'bg-amber-400',
@@ -109,6 +141,7 @@
           { sunA: '#b88284', sunB: '#905e6e', shA: '#482e58', shB: '#301e42', roofA: '#84586a', roofB: '#643e54', trim: '#f0b8a8', trimSh: '#62426c', frame: '#201230', winSky: '#ffb47c', winDark: '#261a40', winWarm: '#ffe288', sill: '#ffdcc4', lobby: '#1e142c' }
         ]
       },
+      // Rank A (3): 네온 야경
       {
         name: 'NEON NIGHT',
         dotClass: 'bg-fuchsia-400',
@@ -128,6 +161,28 @@
           { sunA: '#462a48', sunB: '#321c38', shA: '#24142c', shB: '#160c1e', roofA: '#38203c', roofB: '#26142c', trim: '#8c5286', trimSh: '#4c2c50', frame: '#0c0814', winSky: '#ff5cf4', winDark: '#160e20', winWarm: '#ffbe3b', sill: '#ff9cf8', lobby: '#120a18' },
           { sunA: '#384068', sunB: '#283052', shA: '#1e2240', shB: '#14162c', roofA: '#2e3458', roofB: '#202644', trim: '#7888bc', trimSh: '#424c78', frame: '#0a0c1c', winSky: '#54f8ff', winDark: '#12162e', winWarm: '#ffe55c', sill: '#b8f8ff', lobby: '#101428' },
           { sunA: '#2c3456', sunB: '#1e2440', shA: '#161a32', shB: '#0e1022', roofA: '#242a48', roofB: '#181c36', trim: '#5e70a4', trimSh: '#323c62', frame: '#080a18', winSky: '#54f8ff', winDark: '#0e1226', winWarm: '#ff5cf4', sill: '#8cf8ff', lobby: '#0c0e20' }
+        ]
+      },
+      // Rank S (4): 진홍빛 각성 폭주
+      {
+        name: 'CRIMSON OVERDRIVE',
+        dotClass: 'bg-yellow-300',
+        skyTop: '#160618',
+        shadowCol: '#0a0310',
+        shadowStretchX: 0.48,
+        shadowStretchZ: 0.34,
+        asphaltA: '#1c0f24', asphaltB: '#2a1434',
+        asphaltFarA: '#3c1438', asphaltFarB: '#541840',
+        sidewalkA: '#4c2648', sidewalkB: '#66345c', sidewalkEdge: '#261028',
+        parkA: '#2a3a44', parkB: '#182230', parkHi: '#42565c', parkEdge: '#121422',
+        laneCol: '#ffe55c', crossCol: '#ff8ca8',
+        cloudCols: ['#ff9478', '#b8285c', '#58143c', '#18061c'],
+        bldgThemes: [
+          { sunA: '#481c3a', sunB: '#32122c', shA: '#220c22', shB: '#140616', roofA: '#3a1632', roofB: '#260e24', trim: '#ff6c8c', trimSh: '#782848', frame: '#100412', winSky: '#ffe55c', winDark: '#1a0a1e', winWarm: '#ff4468', sill: '#fff2a8', lobby: '#16081a' },
+          { sunA: '#3a1e46', sunB: '#281434', shA: '#1a0c28', shB: '#10061a', roofA: '#30183c', roofB: '#200e2a', trim: '#ff5cf4', trimSh: '#6c2c74', frame: '#0c0416', winSky: '#54f8ff', winDark: '#160a24', winWarm: '#ffe55c', sill: '#a8fcff', lobby: '#12081e' },
+          { sunA: '#581c32', sunB: '#3e1224', shA: '#2a0a1a', shB: '#180612', roofA: '#46162a', roofB: '#300e1e', trim: '#ff9436', trimSh: '#8c3442', frame: '#12040e', winSky: '#ffe55c', winDark: '#1c0814', winWarm: '#ff5cf4', sill: '#ffe89c', lobby: '#180610' },
+          { sunA: '#422042', sunB: '#2e1432', shA: '#1e0e26', shB: '#120818', roofA: '#361a38', roofB: '#241028', trim: '#f880a8', trimSh: '#703056', frame: '#0e0414', winSky: '#ffe55c', winDark: '#180c20', winWarm: '#54f8ff', sill: '#ffffff', lobby: '#14081c' },
+          { sunA: '#341c3e', sunB: '#24122e', shA: '#180a22', shB: '#0e0616', roofA: '#2a1634', roofB: '#1c0e24', trim: '#e85c94', trimSh: '#5e264c', frame: '#0c0412', winSky: '#ff5cf4', winDark: '#14081c', winWarm: '#ffe55c', sill: '#ffb8f8', lobby: '#100616' }
         ]
       }
     ];
@@ -304,19 +359,35 @@
       const g = c.getContext('2d');
 
       const skyBands = [
+        // 0: Rank D - SUMMER DAY
         [
           { y: 0, col: '#1e46a8' }, { y: 46, col: '#3878d8' },
           { y: 98, col: '#68b0f0' }, { y: 142, col: '#b8e4ff' }, { y: 160, col: '#b8e4ff' }
         ],
+        // 1: Rank C - AMBER AFTERNOON
+        [
+          { y: 0, col: '#243b8c' }, { y: 42, col: '#4a68b8' },
+          { y: 88, col: '#a886b8' }, { y: 126, col: '#f0b888' }, { y: 160, col: '#ffe8b4' }
+        ],
+        // 2: Rank B - GOLDEN SUNSET
         [
           { y: 0, col: '#2c164a' }, { y: 38, col: '#7e2254' },
           { y: 82, col: '#d84c3e' }, { y: 122, col: '#ff9e44' }, { y: 160, col: '#ffe28a' }
         ],
+        // 3: Rank A - NEON NIGHT
         [
           { y: 0, col: '#090a1e' }, { y: 50, col: '#141236' },
           { y: 102, col: '#26184c' }, { y: 144, col: '#4a1e5c' }, { y: 160, col: '#4a1e5c' }
+        ],
+        // 4: Rank S - CRIMSON OVERDRIVE
+        [
+          { y: 0, col: '#160618' }, { y: 42, col: '#3c0c2c' },
+          { y: 86, col: '#841442' }, { y: 126, col: '#cc2850' }, { y: 160, col: '#ff7848' }
         ]
-      ][stageIdx];
+      ][stageIdx] || [
+        { y: 0, col: '#1e46a8' }, { y: 46, col: '#3878d8' },
+        { y: 98, col: '#68b0f0' }, { y: 142, col: '#b8e4ff' }, { y: 160, col: '#b8e4ff' }
+      ];
 
       for (let y = 0; y < H; y++) {
         let sIdx = 0;
@@ -354,6 +425,20 @@
           }
         }
       } else if (stageIdx === 1) {
+        const sunX = 180, sunY = 86;
+        for (let dy = -40; dy <= 40; dy++) {
+          for (let dx = -40; dx <= 40; dx++) {
+            const dist = Math.hypot(dx, dy);
+            const px0 = (sunX + dx + W) % W, py0 = sunY + dy;
+            if (py0 < 0 || py0 >= H) continue;
+            const b4 = BAYER4[py0 & 3][px0 & 3];
+            if (dist <= 15.0) { g.fillStyle = '#fffbe0'; g.fillRect(px0, py0, 1, 1); }
+            else if (dist <= 22.0 && b4 < 11) { g.fillStyle = '#ffe294'; g.fillRect(px0, py0, 1, 1); }
+            else if (dist <= 30.0 && b4 < 6) { g.fillStyle = '#ffbe78'; g.fillRect(px0, py0, 1, 1); }
+            else if (dist <= 38.0 && b4 < 3) { g.fillStyle = '#f0a288'; g.fillRect(px0, py0, 1, 1); }
+          }
+        }
+      } else if (stageIdx === 2) {
         const sunX = 180, sunY = 122;
         for (let dy = -48; dy <= 48; dy++) {
           for (let dx = -48; dx <= 48; dx++) {
@@ -371,7 +456,7 @@
             }
           }
         }
-      } else {
+      } else if (stageIdx === 3) {
         let sSeed = 99123;
         const nRand = () => { sSeed = (sSeed * 1664525 + 1013904223) >>> 0; return sSeed / 4294967296; };
         for (let i = 0; i < 150; i++) {
@@ -404,6 +489,42 @@
             }
           }
         }
+      } else {
+        // 4: Rank S - CRIMSON OVERDRIVE (별빛 + 진홍·황금 개기월식 피버 문)
+        let sSeed = 77321;
+        const nRand = () => { sSeed = (sSeed * 1664525 + 1013904223) >>> 0; return sSeed / 4294967296; };
+        for (let i = 0; i < 170; i++) {
+          const sx = Math.floor(nRand() * W);
+          const sy = Math.floor(nRand() * 106);
+          const kind = i % 5;
+          g.fillStyle = kind === 0 ? '#ffe55c' : (kind === 1 ? '#ff5cf4' : (kind === 2 ? '#54f8ff' : '#ff8ca8'));
+          g.fillRect(sx, sy, 1, 1);
+          if (kind === 0 && i < 28) {
+            g.fillStyle = '#ff9436';
+            g.fillRect((sx + 1) % W, sy, 1, 1);
+            g.fillRect((sx - 1 + W) % W, sy, 1, 1);
+          }
+        }
+        const moonX = 180, moonY = 54;
+        for (let dy = -34; dy <= 34; dy++) {
+          for (let dx = -34; dx <= 34; dx++) {
+            const dist = Math.hypot(dx, dy);
+            const px0 = (moonX + dx + W) % W, py0 = moonY + dy;
+            if (py0 < 0 || py0 >= H) continue;
+            const b4 = BAYER4[py0 & 3][px0 & 3];
+            if (dist <= 11.5) {
+              // 검붉은 개기월식 코어 + 황금 코로나 테두리
+              g.fillStyle = dist > 9.6 ? '#ffe55c' : (dist > 7.5 ? '#a61634' : '#240618');
+              g.fillRect(px0, py0, 1, 1);
+            } else if (dist <= 17.0 && b4 < 12) {
+              g.fillStyle = '#ffe55c'; g.fillRect(px0, py0, 1, 1);
+            } else if (dist <= 24.5 && b4 < 8) {
+              g.fillStyle = '#e82848'; g.fillRect(px0, py0, 1, 1);
+            } else if (dist <= 33.0 && b4 < 4) {
+              g.fillStyle = '#841442'; g.fillRect(px0, py0, 1, 1);
+            }
+          }
+        }
       }
 
       const cSpr = cloud2Sprites[stageIdx];
@@ -413,9 +534,14 @@
         g.drawImage(cSpr, cx, cy, 26, 11);
       }
 
-      const far1 = stageIdx === 0 ? '#7e8ec9' : (stageIdx === 1 ? '#5e2c5c' : '#1b1a3c');
-      const far2 = stageIdx === 0 ? '#5a6ba8' : (stageIdx === 1 ? '#3c1c46' : '#101028');
-      const rimCol = stageIdx === 0 ? '#92a8de' : (stageIdx === 1 ? '#ff9e64' : '#54f8ff');
+      const far1List = ['#7e8ec9', '#7a689c', '#5e2c5c', '#1b1a3c', '#2c0c24'];
+      const far2List = ['#5a6ba8', '#56467a', '#3c1c46', '#101028', '#180616'];
+      const rimList  = ['#92a8de', '#f0b888', '#ff9e64', '#54f8ff', '#ffe55c'];
+      const mistList = ['#b8e4ff', '#ffe0a8', '#ffd880', '#4a1e5c', '#a81c44'];
+      const far1 = far1List[stageIdx] || far1List[0];
+      const far2 = far2List[stageIdx] || far2List[0];
+      const rimCol = rimList[stageIdx] || rimList[0];
+      const isNeonStage = stageIdx >= 3;
 
       g.fillStyle = far1;
       let bx = 0, seed = 1337;
@@ -431,11 +557,15 @@
           g.fillRect(sx, H - bh - 7, sw, 7);
           g.fillRect(sx + (sw >> 1), H - bh - 18, 1, 11);
         }
-        if (stageIdx === 2) {
+        if (isNeonStage) {
           for (let wy = H - bh + 4; wy < H - 6; wy += 4) {
             for (let wx = bx + 2; wx < bx + bw - 2; wx += 3) {
-              if (nextRand() < 0.28) {
-                g.fillStyle = nextRand() < 0.5 ? '#ffbe3b' : (nextRand() < 0.7 ? '#54f8ff' : '#ff5cf4');
+              if (nextRand() < (stageIdx === 4 ? 0.34 : 0.28)) {
+                if (stageIdx === 4) {
+                  g.fillStyle = nextRand() < 0.45 ? '#ffe55c' : (nextRand() < 0.75 ? '#ff4468' : '#54f8ff');
+                } else {
+                  g.fillStyle = nextRand() < 0.5 ? '#ffbe3b' : (nextRand() < 0.7 ? '#54f8ff' : '#ff5cf4');
+                }
                 g.fillRect(wx, wy, 1, 1);
               }
             }
@@ -456,7 +586,7 @@
         if (x < 612) { const t = (x - 580) / 32; cy = brY - t * t * 20; }
         else if (x <= 688) { const t = (x - 650) / 38; cy = brY - 3 - t * t * 17; }
         else { const t = (720 - x) / 32; cy = brY - t * t * 20; }
-        g.fillStyle = (stageIdx === 2 && (x % 4 === 0)) ? '#ffbe3b' : far1;
+        g.fillStyle = (isNeonStage && (x % 4 === 0)) ? (stageIdx === 4 ? '#ffe55c' : '#ffbe3b') : far1;
         g.fillRect(x, Math.round(cy), 1, 1);
         if (x % 6 === 0 && x > 586 && x < 714) {
           g.fillStyle = far1;
@@ -478,7 +608,7 @@
         bx += bw + 4 + Math.floor(nextRand() * 10);
       }
 
-      const mistCol = stageIdx === 0 ? '#b8e4ff' : (stageIdx === 1 ? '#ffd880' : '#4a1e5c');
+      const mistCol = mistList[stageIdx] || mistList[0];
       for (let y = H - 10; y < H; y++) {
         const mistLvl = Math.floor(((y - (H - 10)) / 10) * 9);
         for (let x = 0; x < W; x++) {

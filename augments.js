@@ -60,9 +60,9 @@ const AUGMENTS = [
   {
     id: 'chain_pinball', tag: '기믹', name: '연쇄 핀볼', col: '#ff5cf4',
     levels: [
-      ['적중시 자동 1연쇄', '탐색 반경 95m', '연쇄 피해 36'],
-      ['자동 3연쇄/120m', '연쇄 피해 52', '체공 스택 유지'],
-      ['자동 5연쇄/150m', '연쇄 피해 70', '★종료후 쿨0+가속']
+      ['적중시 자동 1연쇄', '탐색 반경 95m', '속도연동 연쇄 16x'],
+      ['자동 3연쇄/120m', '속도연동 연쇄 22x', '체공 스택 유지'],
+      ['자동 5연쇄/150m', '속도연동 연쇄 28x', '★종료후 쿨0+가속']
     ]
   },
   {
@@ -137,12 +137,13 @@ let draftCursor = 1;         // 선택 포커스 인덱스 (0, 1, 2)
 let draftJoyLock = false;    // 아날로그 스틱 좌/우 연속 이동 방지 락
 let draftLockTimer = 0.0;    // 드래프트 열린 직후 실수 확정 방지 잠금 시간 (초)
 
-// 실력 기반 경험치(XP) & 레벨업 증강 성장 상태
+// 순수 전투·웨이브 기반 경험치(XP) & 레벨업 증강 성장 상태
 let playerLevel = 1;
 let playerXp = 0;
-let xpToNext = 160;
+let xpToNext = 130;
 let pendingLevelUps = 0;
 let totalAugmentsPicked = 0;
+let overpowerStacks = 0;     // 12픽 만렙 이후 초과 레벨업당 STRIKE 영구 화력 +5%
 
 // 물리 변환 및 기믹 실시간 누적 변수
 let airTimeStack = 0.0;      // 체공 예열: 공중 체류 시간 (초)
@@ -219,13 +220,13 @@ function getVacuumDragFactor() {
   return 0.0;
 }
 
-// 연쇄 핀볼 레벨별 사양
+// 연쇄 핀볼 레벨별 사양 (속도 스케일링 기본 계수: 16 / 22 / 28)
 function getChainSpec() {
   const lv = getLv('chain_pinball');
   if (lv <= 0) return null;
-  if (lv === 1) return { bounces: 1, radius: 95.0, dmg: 36.0, keepAir: false, endBonus: false };
-  if (lv === 2) return { bounces: 3, radius: 120.0, dmg: 52.0, keepAir: true, endBonus: false };
-  return { bounces: 5, radius: 150.0, dmg: 70.0, keepAir: true, endBonus: true };
+  if (lv === 1) return { bounces: 1, radius: 95.0, baseDmg: 16.0, keepAir: false, endBonus: false };
+  if (lv === 2) return { bounces: 3, radius: 120.0, baseDmg: 22.0, keepAir: true, endBonus: false };
+  return { bounces: 5, radius: 150.0, baseDmg: 28.0, keepAir: true, endBonus: true };
 }
 
 // 하위 호환: 연쇄 핀볼 레벨별 자동 튕김 횟수 (Lv.1: 1회 / Lv.2: 3회 / Lv.3: 5회)
@@ -306,9 +307,9 @@ function getFricHeatSpec() {
   return { boostRate: 0.50, chargeRate: 1.50, shockR: 84.0, shockDmgRatio: 1.00, fireTick: true };
 }
 
-// 레벨별 필요 경험치 (초반 실력 플레이로 1웨이브 내 빠른 성장 가속)
+// 레벨별 필요 경험치 (순수 전투·웨이브 6분 기준 12픽 만렙 누적 9,216 XP)
 function getXpRequirement(lv) {
-  return Math.round(160 + (lv - 1) * 85 + (lv - 1) * (lv - 1) * 14);
+  return Math.round(130 + (lv - 1) * 70 + (lv - 1) * (lv - 1) * 6);
 }
 
 // 경험치 획득 및 레벨업 예약
@@ -340,6 +341,7 @@ function resetAugments() {
   xpToNext = getXpRequirement(1);
   pendingLevelUps = 0;
   totalAugmentsPicked = 0;
+  overpowerStacks = 0;
 
   airTimeStack = 0.0;
   peakFallSpeed = 0.0;
@@ -370,7 +372,7 @@ function getAugStats() {
   let lockRangeMult = 1.0; // STRIKE 락온 사거리 배율
   let lockDotBonus  = 0.0; // STRIKE 락온 각도 완화 보너스
   let bungeeBounce  = 1.0; // 스윙 상승 반동 배율
-  let baseDmgMult   = 1.0; // 기본 STRIKE 피해 배율
+  let baseDmgMult   = 1.0 + overpowerStacks * 0.05; // 기본 STRIKE 피해 배율 (+만렙 초과 OVERPOWER)
 
   // [초중력 슈트]: 중력 1.55x 고정, 기본 STRIKE 피해 +20% / +45% / +80%
   const lvHeavy = getLv('heavy_suit');
@@ -440,10 +442,10 @@ function openAugmentDraft() {
   }
 
   if (available.length === 0) {
-    hp = Math.min(MAX_HP, hp + 30);
-    if (typeof score === 'number') score += 1000;
+    hp = Math.min(MAX_HP, hp + 25);
+    overpowerStacks++;
     pendingLevelUps = Math.max(0, pendingLevelUps - 1);
-    addPopup('BUILD MAX!! +30HP +1000', PAL.GOLD, 3);
+    addPopup('BUILD MAX!! +25HP PWR+' + (overpowerStacks * 5) + '%', PAL.GOLD, 3);
     return;
   }
 
