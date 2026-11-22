@@ -461,7 +461,6 @@ function spawnWave(waveNum) {
   pendingExplosions = [];
   clearStrikeState();
   strikeGraceTimer = 0;
-  refillElasticCharges();
 
   const world = getNearbyWorld();
 
@@ -962,9 +961,6 @@ function startWebSwing(bList, cList, fromGroundLaunch = false) {
   clearStrikeState();
   isGliding = false;
 
-  // 스윙을 시작할 때마다 탄성 반발 튕김 횟수 리필 (Lv.1:2회, Lv.2:4회, Lv.3:∞)
-  refillElasticCharges();
-
   ax = target.wx; ay = target.wy; az = target.wz;
   anchorSide = target.side;
   lastAnchorSide = anchorSide;
@@ -1074,6 +1070,9 @@ function onSwingUp() {
         vx += sinY * (24.0 + depthRatio * 20.0);
         vz += cosY * (24.0 + depthRatio * 20.0);
         perfectBuffTimer = 3.4;
+        if (refillElasticCharges()) {
+          spawnSparks(px, py, pz, PAL.EMERALD, 6, 26);
+        }
 
         const pts = Math.round((440 + swingDepth * 4.0) * Math.pow(1.38, Math.min(swingCombo, 10)));
         const perfXp = Math.round(24 + depthRatio * 14);
@@ -1104,7 +1103,7 @@ function onSwingUp() {
 }
 
 // =========================================================================
-// 7. BUILDING COLLISIONS (FORGIVING WALL SLIDE + LEVELED 1.05x ELASTIC BOUNCE)
+// 7. BUILDING COLLISIONS (FORGIVING WALL SLIDE + LEVELED ELASTIC BOUNCE)
 // =========================================================================
 function handleBuildingsCollisionAndProximity(bList) {
   let minWallDist = 999.0;
@@ -1147,10 +1146,11 @@ function handleBuildingsCollisionAndProximity(bList) {
 
           if (impactCos > crashThreshold && strikeMode === 0 && strikeGraceTimer <= 0) {
             const lvElastic = getLv('elastic');
-            if (lvElastic > 0 && (lvElastic >= 3 || elasticChargesLeft > 0)) {
-              if (lvElastic < 3) elasticChargesLeft--;
-              const rx = (vx - 2.0 * vn * nx) * 1.05;
-              const rz = (vz - 2.0 * vn * nz) * 1.05;
+            if (lvElastic > 0 && elasticChargesLeft > 0) {
+              elasticChargesLeft--;
+              const bounceMult = getElasticBounceMult();
+              const rx = (vx - 2.0 * vn * nx) * bounceMult;
+              const rz = (vz - 2.0 * vn * nz) * bounceMult;
               const rSpd = Math.hypot(rx, rz);
               if (rSpd < 34.0 && rSpd > 0.1) {
                 vx = (rx / rSpd) * 34.0;
@@ -1168,8 +1168,8 @@ function handleBuildingsCollisionAndProximity(bList) {
               shakeMag = Math.max(shakeMag, 2.8);
               triggerShockwave(px, py, pz, 44 + lvElastic * 10, 18 + lvElastic * 10, PAL.EMERALD);
               spawnSparks(px, py, pz, PAL.EMERALD, 14, 34);
-              const remLabel = lvElastic >= 3 ? '∞' : (elasticChargesLeft + ' LEFT');
-              addPopup('ELASTIC 1.05x! (' + remLabel + ')', PAL.EMERALD, 2);
+              const maxCharges = getElasticMaxCharges();
+              addPopup('ELASTIC ' + bounceMult.toFixed(1) + 'x! (' + elasticChargesLeft + '/' + maxCharges + ')', PAL.EMERALD, 2);
               continue;
             }
 
@@ -1520,6 +1520,9 @@ function updateCombat(dt, oldX, oldY, oldZ, bList, totalSpeed) {
         clearProjectilesInRadius(targetX, targetY, targetZ, 28.0, impactCol);
 
         const killed = applyEnemyDamage(e, dmg, impactCol, isCrit, 0, calc.xpMult, true);
+        if (refillElasticCharges()) {
+          spawnSparks(targetX, targetY, targetZ, PAL.EMERALD, 6, 26);
+        }
 
         // 광역 충격파 계산 (체공 예열 / 마찰 과열 / 초중력 C1)
         const lvAir = getLv('air_heat');
@@ -2591,7 +2594,7 @@ function tick(now) {
     // Building collisions + proximity
     const { minWallDist, nearestSide } = handleBuildingsCollisionAndProximity(nearbyBuildings);
 
-    // Ground Protection (+ 탄성 반발 1.05x 횟수 제한 적용)
+    // Ground Protection (바닥 로켓 방어 유지 · 탄성 반발은 건물 벽면 정면 충돌 전용)
     if (py < 2.5) {
       py = 2.5;
       doingFlip = false;
@@ -2599,26 +2602,7 @@ function tick(now) {
       isGliding = false;
       diveCharge = 0;
 
-      const lvElastic = getLv('elastic');
-      const wantsBounce = (isSwinging || vy < -26.0 || strikeMode === 1);
-      if (lvElastic > 0 && wantsBounce && (lvElastic >= 3 || elasticChargesLeft > 0)) {
-        if (lvElastic < 3) elasticChargesLeft--;
-        const bounceVy = Math.min(155.0, Math.max(52.0, Math.abs(vy) * 1.05));
-        vx *= 1.05;
-        vz *= 1.05;
-        vy = bounceVy;
-        isSwinging = false;
-        inPerfectWindow = false;
-        clearStrikeState();
-        strikeGraceTimer = Math.max(strikeGraceTimer, 0.35);
-        doingFlip = true;
-        flipAngle = 0.0;
-        shakeMag = Math.max(shakeMag, 2.8);
-        triggerShockwave(px, 3.5, pz, 46 + lvElastic * 10, 18 + lvElastic * 10, PAL.EMERALD);
-        spawnSparks(px, 2.0, pz, PAL.EMERALD, 14, 34);
-        const remLabel = lvElastic >= 3 ? '∞' : (elasticChargesLeft + ' LEFT');
-        addPopup('GROUND 1.05x! (' + remLabel + ')', PAL.EMERALD, 2);
-      } else if (strikeMode === 1) {
+      if (strikeMode === 1) {
         const slamDmg = 36 + Math.round(Math.min(50, Math.abs(vy) * 0.45));
         triggerShockwave(px, 3.0, pz, 55.0, slamDmg, PAL.ORANGE);
         clearStrikeState();
@@ -2635,11 +2619,11 @@ function tick(now) {
           isSwinging = false;
           inPerfectWindow = false;
           spawnSparks(px, 1.5, pz, PAL.ORANGE, 10, 26);
-          takeDamage(8, lvElastic > 0 ? 'BOUNCE DEPLETED!' : 'GROUND SLAM!');
+          takeDamage(8, 'GROUND SLAM!');
         } else {
           if (vy < -32.0) {
             vx *= 0.55; vz *= 0.55;
-            takeDamage(8, lvElastic > 0 ? 'BOUNCE DEPLETED!' : 'HARD LANDING!');
+            takeDamage(8, 'HARD LANDING!');
           }
           vy = 0.0;
         }

@@ -3,7 +3,7 @@
 // =========================================================================
 // 스파이더맨 PC-98 로그라이크 증강(카드) 시스템 — 기믹 확장 완전판
 // - 14종 유기적 증강 (물리 변조 4 / 폭발 기믹 4 / 변환·역전 6)
-// - 탄성 반발: 스윙 후 튕김 횟수 Lv.1(2회) / Lv.2(4회) / Lv.3(무한), 반사 속력 1.05x
+// - 탄성 반발: 벽면 정면 충돌 전용 반사, 최대 1/2/3회, 배율 0.9x/1.0x/1.1x, STRIKE·PERFECT 전량 재충전
 // - 실력 기반 경험치(XP) 레벨업 증강 + 0.65초 오입력 방지 잠금
 // - 320x170 고대비 한글 카드 UI & 좌측 하단 보유 배지/실시간 스택 표시
 // =========================================================================
@@ -24,7 +24,7 @@ const AUGMENTS = [
   { id: 'domino_boom',   tag: '기믹', name: '도미노 폭발',   col: '#ff9436', desc: ['적 처치시 광역', '2차 연쇄폭발', '편대 일괄폭파'] },
 
   // ③ 물리 변환 & 규칙 역전 (범용 화력 엔진 ↔ 단점 역전 스위치)
-  { id: 'elastic',       tag: '역전', name: '탄성 반발',     col: '#4ade80', desc: ['충돌무효 1.05x', '스윙당 2/4/∞회', '충격파 방출'] },
+  { id: 'elastic',       tag: '역전', name: '탄성 반발',     col: '#4ade80', desc: ['벽 반사 0.9~1.1x', '1/2/3회 + 충격파', '타격·퍼펙트 충전'] },
   { id: 'cloud_hook',    tag: '역전', name: '구름 앵커',     col: '#b8e4ff', desc: ['상공 구름스윙', '160m+ 치명타', '성층권 제압'] },
   { id: 'vacuum',        tag: '역전', name: '진공 활공',     col: '#54f8ff', desc: ['공기저항 0%', '오라 상시유지', '공중감속 불가'] },
   { id: 'fall_mom',      tag: '변환', name: '낙하 운동량',   col: '#ff9436', desc: ['하강속도 비례', 'STRIKE 폭증', 'C1 보스원샷'] },
@@ -54,7 +54,7 @@ let airTimeStack = 0.0;      // 체공 예열: 공중 체류 시간 (초)
 let peakFallSpeed = 0.0;     // 낙하 운동량: 직전 최대 하강 속도 (-vy)
 let frictionCharge = 0.0;    // 마찰 과열: 벽/바닥 스침 누적치 (0 ~ 1.5)
 let perfectBuffTimer = 0.0;  // PERFECT RELEASE 후 단기 화력 보너스
-let elasticChargesLeft = 0;  // 탄성 반발: 현재 스윙 이후 남은 튕김 횟수
+let elasticChargesLeft = 0;  // 탄성 반발: 남은 벽면 반사 충전량 (0 ~ 레벨 최대치)
 
 // 초경량 PC-98 도트 이펙트 배열 (ESP32-S3 친화적 선분/원형 기반)
 let shockwaves = [];         // { x, y, z, r, maxR, life, maxLife, col }
@@ -70,17 +70,27 @@ function getLv(id) {
   return augLevels[id];
 }
 
-// 탄성 반발 레벨별 스윙당 튕김 횟수 (Lv.1: 2회 / Lv.2: 4회 / Lv.3: 무한)
+// 탄성 반발 레벨별 최대 충전량 (Lv.1: 1회 / Lv.2: 2회 / Lv.3: 3회)
 function getElasticMaxCharges() {
   const lv = getLv('elastic');
   if (lv <= 0) return 0;
-  if (lv === 1) return 2;
-  if (lv === 2) return 4;
-  return Infinity;
+  return Math.min(MAX_AUG_LEVEL, lv);
+}
+
+// 탄성 반발 레벨별 벽면 반사 속도 배율 (Lv.1: 0.9x / Lv.2: 1.0x / Lv.3: 1.1x)
+function getElasticBounceMult() {
+  const lv = getLv('elastic');
+  if (lv <= 0) return 0.0;
+  if (lv === 1) return 0.9;
+  if (lv === 2) return 1.0;
+  return 1.1;
 }
 
 function refillElasticCharges() {
-  elasticChargesLeft = getElasticMaxCharges();
+  const maxCharges = getElasticMaxCharges();
+  const recharged = maxCharges > 0 && elasticChargesLeft < maxCharges;
+  elasticChargesLeft = maxCharges;
+  return recharged;
 }
 
 // 연쇄 핀볼 레벨별 자동 튕김 횟수 (Lv.1: 2회 / Lv.2: 3회 / Lv.3: 5회)
@@ -283,11 +293,13 @@ function confirmAugment(idx) {
   augmentDraftOpen = false;
   draftChoices = [];
 
-  // 웨이브 도중 레벨업 후 복귀 시 짧은 보호 무적 & 탄성 충전
+  // 웨이브 도중 레벨업 후 복귀 시 짧은 보호 무적 & 탄성 반발 획득/강화 시 최대치 충전
   invulnTimer = Math.max(invulnTimer, 0.85);
   swingHeld = false;
   autoCatchAfterJump = false;
-  refillElasticCharges();
+  if (picked.id === 'elastic') {
+    refillElasticCharges();
+  }
 
   addPopup(picked.name + ' Lv.' + newLv + '!', picked.col, 3);
 }
@@ -403,17 +415,41 @@ function drawActiveAugmentsHUD(totalSpeed, swingingNow) {
   let infoY = LCD_H - 22;
   ctx.font = 'bold 9px Consolas, monospace';
 
-  // 탄성 반발 남은 튕김 횟수 표시
-  const lvElastic = getLv('elastic');
-  if (lvElastic > 0) {
-    const txt = lvElastic >= 3 ? 'BNC ∞' : ('BNC x' + elasticChargesLeft);
-    const active = (lvElastic >= 3 || elasticChargesLeft > 0);
+  // 탄성 반발 남은 충전량 표시 (320x170 HUD 4x4 도트 1~3개)
+  const maxElastic = getElasticMaxCharges();
+  if (maxElastic > 0) {
+    const active = elasticChargesLeft > 0;
+    const dotSize = 4;
+    const dotGap = 2;
+    const dotStartX = 27;
+    const boxX = 4;
+    const boxY = infoY - 9;
+    const boxH = 11;
+    const boxW = (dotStartX - boxX) + maxElastic * (dotSize + dotGap) - dotGap + 4;
+
     ctx.fillStyle = '#0c1228';
-    ctx.fillRect(4, infoY - 9, 46, 11);
+    ctx.fillRect(boxX, boxY, boxW, boxH);
     ctx.strokeStyle = active ? PAL.EMERALD : '#475569';
-    ctx.strokeRect(4.5, infoY - 8.5, 45, 10);
+    ctx.lineWidth = 1;
+    ctx.strokeRect(boxX + 0.5, boxY + 0.5, boxW - 1, boxH - 1);
     ctx.fillStyle = active ? PAL.EMERALD : '#94a3b8';
-    ctx.fillText(txt, 7, infoY);
+    ctx.fillText('BNC', boxX + 3, infoY);
+
+    const dotY = boxY + 3;
+    for (let i = 0; i < maxElastic; i++) {
+      const dotX = dotStartX + i * (dotSize + dotGap);
+      if (i < elasticChargesLeft) {
+        ctx.fillStyle = PAL.EMERALD;
+        ctx.fillRect(dotX, dotY, dotSize, dotSize);
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(dotX, dotY, 1, 1);
+      } else {
+        ctx.fillStyle = '#1e293b';
+        ctx.fillRect(dotX, dotY, dotSize, dotSize);
+        ctx.strokeStyle = '#475569';
+        ctx.strokeRect(dotX + 0.5, dotY + 0.5, dotSize - 1, dotSize - 1);
+      }
+    }
     infoY -= 13;
   }
 
