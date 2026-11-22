@@ -466,14 +466,17 @@ function spawnWave(waveNum) {
 
   const world = getNearbyWorld();
 
-  // 1) 1단계 스웜 드론 편대 (플레이어를 추격해 다가옴, 8~16기)
+  // 1) 1단계 스웜 드론 편대 (진행 방향 전방 궤도 요격형, 8~16기)
   const squadCount = Math.min(4, 2 + Math.floor(waveNum / 2));
   const perSquad = 4;
   for (let sq = 0; sq < squadCount; sq++) {
-    const sqAngle = ((sq / Math.max(1, squadCount - 1)) - 0.5) * 1.2 + (Math.random() - 0.5) * 0.25;
+    const sqAngle = ((sq / Math.max(1, squadCount - 1)) - 0.5) * 0.85 + (Math.random() - 0.5) * 0.20;
     const yaw = camYaw + sqAngle;
-    const dist = 105.0 + sq * 32.0 + Math.random() * 25.0;
-    const baseAlt = Math.max(24.0, Math.min(220.0, py + (sq - 1) * 28.0 + (Math.random() - 0.5) * 25.0));
+    const dist = 95.0 + sq * 30.0 + Math.random() * 22.0;
+    const isLowSquad = (sq % 2 === 0);
+    const baseAlt = isLowSquad
+      ? (18.0 + Math.random() * 34.0)
+      : Math.max(22.0, Math.min(185.0, py + (Math.random() - 0.5) * 40.0));
     const cx = px + Math.sin(yaw) * dist;
     const cz = pz + Math.cos(yaw) * dist;
     const safeCenter = pushOutOfBuildings(cx, baseAlt, cz, 18.0, world.buildings);
@@ -482,7 +485,7 @@ function spawnWave(waveNum) {
       const ang = (m / perSquad) * Math.PI * 2 + sq * 0.6;
       const sx = safeCenter.x + Math.cos(ang) * 14.0;
       const sz = safeCenter.z + Math.sin(ang) * 14.0;
-      const sy = Math.max(14.0, baseAlt + ((m & 1) ? 5.0 : -5.0));
+      const sy = Math.max(12.0, baseAlt + ((m & 1) ? 4.5 : -4.5));
       const swarmHp = 24 + Math.min(16, (waveNum - 1) * 3);
 
       enemies.push({
@@ -492,23 +495,24 @@ function spawnWave(waveNum) {
         vx: 0, vy: 0, vz: 0,
         flockAngle: ang,
         flockDist: 10.0 + (m % 3) * 5.0,
+        lowBias: isLowSquad,
         hp: swarmHp, maxHp: swarmHp,
         radius: 7.6,
         phase: Math.random() * Math.PI * 2,
-        fireTimer: 999.0, // 잡몹은 원거리 사격 없이 추격 전용
+        fireTimer: 999.0, // 잡몹은 원거리 사격 없이 전방 요격 전용
         hitFlash: 0
       });
     }
   }
 
-  // 2) 2단계 중형 터렛 & 스카이 코어 (거리 유지 + 원거리 사격)
+  // 2) 2단계 중형: 저공 고정 터렛(WALL_TURRET, 18~62m) vs 중공 코어(SKY_CORE, 85~165m) 고도층 분리
   const medCount = Math.min(6, 2 + waveNum);
   for (let i = 0; i < medCount; i++) {
-    const spread = ((i / Math.max(1, medCount - 1)) - 0.5) * 1.45 + (Math.random() - 0.5) * 0.2;
+    const spread = ((i / Math.max(1, medCount - 1)) - 0.5) * 1.05 + (Math.random() - 0.5) * 0.16;
     const yaw = camYaw + spread;
-    const dist = 125.0 + (i % 3) * 32.0 + Math.random() * 20.0;
-    const isSky = (i % 2 === 0);
-    const ey = isSky ? (135.0 + Math.random() * 75.0) : (55.0 + Math.random() * 62.0);
+    const dist = 110.0 + (i % 3) * 30.0 + Math.random() * 18.0;
+    const isSky = (i % 2 === 1);
+    const ey = isSky ? (85.0 + Math.random() * 78.0) : (18.0 + Math.random() * 42.0);
     const safe = pushOutOfBuildings(px + Math.sin(yaw) * dist, ey, pz + Math.cos(yaw) * dist, 18.0, world.buildings);
     const medHp = (isSky ? 98 : 92) + (waveNum - 1) * 16;
 
@@ -518,11 +522,12 @@ function spawnWave(waveNum) {
       x: safe.x, y: ey, z: safe.z,
       vx: 0, vy: 0, vz: 0,
       orbitDir: (i & 1) ? 1 : -1,
-      minRange: 92.0,
-      maxRange: 152.0,
-      altMin: isSky ? 105.0 : 38.0,
-      altMax: isSky ? 310.0 : 165.0,
-      altOffset: isSky ? 26.0 : -10.0,
+      minRange: isSky ? 88.0 : 72.0,
+      maxRange: isSky ? 148.0 : 138.0,
+      altMin: isSky ? 72.0 : 16.0,
+      altMax: isSky ? 210.0 : 68.0,
+      anchorAlt: ey,
+      altOffset: isSky ? 10.0 : 0.0,
       hp: medHp, maxHp: medHp,
       radius: isSky ? 11.0 : 10.0,
       phase: Math.random() * Math.PI * 2,
@@ -531,13 +536,13 @@ function spawnWave(waveNum) {
     });
   }
 
-  // 3) 3단계 웨이브 엘리트 거대 코어 (초반 Wave 1~2 미등장, Wave 3부터 원거리 포격 보스 등장)
+  // 3) 3단계 웨이브 엘리트 거대 코어 (Wave 3+ 등장, 중·고공층 유지로 고공 SLAM 표적 지원)
   if (waveNum >= 3) {
     const eliteCount = waveNum >= 5 ? 2 : 1;
     for (let b = 0; b < eliteCount; b++) {
-      const yaw = camYaw + (eliteCount === 1 ? 0 : (b === 0 ? -0.35 : 0.35));
-      const dist = 165.0 + b * 35.0;
-      const ey = 145.0 + Math.random() * 75.0;
+      const yaw = camYaw + (eliteCount === 1 ? 0 : (b === 0 ? -0.30 : 0.30));
+      const dist = 148.0 + b * 32.0;
+      const ey = 100.0 + Math.random() * 75.0;
       const safe = pushOutOfBuildings(px + Math.sin(yaw) * dist, ey, pz + Math.cos(yaw) * dist, 24.0, world.buildings);
       const eliteHp = 310 + (waveNum - 3) * 90;
 
@@ -547,11 +552,12 @@ function spawnWave(waveNum) {
         x: safe.x, y: ey, z: safe.z,
         vx: 0, vy: 0, vz: 0,
         orbitDir: (b & 1) ? 1 : -1,
-        minRange: 115.0,
-        maxRange: 185.0,
-        altMin: 110.0,
-        altMax: 360.0,
-        altOffset: 34.0,
+        minRange: 105.0,
+        maxRange: 175.0,
+        altMin: 78.0,
+        altMax: 230.0,
+        anchorAlt: ey,
+        altOffset: 12.0,
         hp: eliteHp, maxHp: eliteHp,
         radius: 15.5,
         phase: Math.random() * Math.PI * 2,
@@ -701,9 +707,9 @@ function computeStrikeDamage(mode, entrySpd, entryDist, downVy, isChain) {
 function findCase1Target() {
   if (enemies.length === 0) return null;
   const aug = getAugStats();
-  const maxDist = 260.0 * aug.lockRangeMult;
-  const minVelDot = Math.max(0.22, 0.52 - aug.lockDotBonus);
-  const minFwdDot = Math.max(0.18, 0.40 - aug.lockDotBonus);
+  const maxDist = 275.0 * aug.lockRangeMult;
+  const minVelDot = Math.max(0.22, 0.48 - aug.lockDotBonus);
+  const minFwdDot = Math.max(0.18, 0.38 - aug.lockDotBonus);
 
   const spd = Math.hypot(vx, vy, vz) || 1.0;
   const dvx = vx / spd, dvy = vy / spd, dvz = vz / spd;
@@ -715,14 +721,22 @@ function findCase1Target() {
     const dx = e.x - px, dy = e.y - py, dz = e.z - pz;
     const dist = Math.hypot(dx, dy, dz);
     if (dist > maxDist || dist < 4.0) continue;
-    if (dy > 20.0) continue;
+    if (dy > 16.0) continue;
 
+    const hDist = Math.hypot(dx, dz) || 1.0;
     const nx = dx / dist, ny = dy / dist, nz = dz / dist;
     const velDot = nx * dvx + ny * dvy + nz * dvz;
-    const fwdDot = (dx * sinY + dz * cosY) / (Math.hypot(dx, dz) || 1.0);
-    if (velDot < minVelDot || fwdDot < minFwdDot) continue;
+    const fwdDot = (dx * sinY + dz * cosY) / hDist;
 
-    const sc = dist + (1.0 - velDot) * 200.0 - (e.tier === 'ELITE' ? 28.0 : 0);
+    // 고공 급강하 시 바로 발밑 원뿔 구간은 수평 fwdDot 흔들림 없이 자연스럽게 포착
+    const inUnderCone = (dy < -10.0 && hDist < Math.max(48.0, -dy * 0.72));
+    if (inUnderCone) {
+      if (velDot < Math.max(0.26, minVelDot - 0.14)) continue;
+    } else {
+      if (velDot < minVelDot || fwdDot < minFwdDot) continue;
+    }
+
+    const sc = dist + (1.0 - velDot) * 185.0 - (inUnderCone ? 24.0 : 0) - (e.tier === 'ELITE' ? 28.0 : 0);
     if (sc < bestScore) {
       bestScore = sc;
       best = e;
@@ -1267,7 +1281,7 @@ function pointToSegmentDist3D(qx, qy, qz, x1, y1, z1, x2, y2, z2) {
   return Math.hypot(qx - (x1 + dx * t), qy - (y1 + dy * t), qz - (z1 + dz * t));
 }
 
-// 1단계(추격형) / 2~3단계(원거리 거리유지·선회형) 이동 AI 업데이트
+// 1단계(전방 궤도 요격형) / 2~3단계(고도층 분리 + 전방 시야 선회형) 이동 AI 업데이트
 function updateEnemyMovementAI(e, dt, bList) {
   e.phase += dt * 1.9;
   if (e.hitFlash > 0) e.hitFlash -= dt;
@@ -1277,38 +1291,49 @@ function updateEnemyMovementAI(e, dt, bList) {
   const dzFromP = e.z - pz;
   const dist3D = Math.hypot(dxFromP, dyFromP, dzFromP) || 1.0;
 
+  const hSpd = Math.hypot(vx, vz);
+  const camSin = Math.sin(camYaw), camCos = Math.cos(camYaw);
+  const moveSin = hSpd > 8.0 ? (vx / hSpd) : camSin;
+  const moveCos = hSpd > 8.0 ? (vz / hSpd) : camCos;
+  const fwdProj = dxFromP * moveSin + dzFromP * moveCos;
+
   if (e.tier === 'SWARM') {
-    // === 1단계 잡몹: 플레이어를 향해 적극적으로 추격하며 몰려듦 ===
-    if (dist3D > 360.0) {
-      // 너무 멀어지면 전방 시야 140~190m 부근으로 합류시켜 추격 흐름 유지
-      const pullYaw = camYaw + (Math.random() - 0.5) * 1.15;
-      const pullDist = 140.0 + Math.random() * 50.0;
-      const targetY = Math.max(18.0, Math.min(340.0, py + (Math.random() - 0.5) * 45.0));
+    // === 1단계 잡몹: 플레이어 등 뒤가 아닌 진행 방향 전방 궤도로 요격 유입 ===
+    if (dist3D > 315.0 || (hSpd > 38.0 && fwdProj < -135.0)) {
+      const pullYaw = Math.atan2(moveSin, moveCos) + (Math.random() - 0.5) * 0.95;
+      const pullDist = 110.0 + Math.random() * 68.0;
+      const targetY = (e.lowBias || py < 42.0)
+        ? (15.0 + Math.random() * 32.0)
+        : Math.max(18.0, Math.min(240.0, py + (Math.random() - 0.5) * 42.0));
       const safe = pushOutOfBuildings(px + Math.sin(pullYaw) * pullDist, targetY, pz + Math.cos(pullYaw) * pullDist, 12.0, bList);
       e.x = safe.x; e.y = targetY; e.z = safe.z;
       e.vx = 0; e.vy = 0; e.vz = 0;
       return;
     }
 
-    // 서로 완전히 한 점에 겹치지 않도록 약간의 편대 오프셋을 두고 플레이어 추적
+    // 멀리 있을수록 진행 방향 앞쪽(리드)으로 가로막고, 가까워지면 본체를 감싸며 조여옴
+    const leadBlend = Math.max(0.0, Math.min(1.0, (dist3D - 28.0) / 48.0));
+    const leadDist = Math.min(82.0, hSpd * 0.85) * leadBlend;
     const swirlAng = e.flockAngle + e.phase * 0.65;
-    const goalX = px + Math.cos(swirlAng) * e.flockDist;
-    const goalZ = pz + Math.sin(swirlAng) * e.flockDist;
-    const goalY = Math.max(12.0, Math.min(GAME_MAX_ALTITUDE - 30.0, py + Math.sin(e.phase * 1.3) * 7.5));
+    const goalX = px + moveSin * leadDist + Math.cos(swirlAng) * e.flockDist;
+    const goalZ = pz + moveCos * leadDist + Math.sin(swirlAng) * e.flockDist;
+    const baseGoalY = e.lowBias
+      ? Math.max(14.0, Math.min(62.0, py * 0.45 + 16.0))
+      : Math.max(14.0, Math.min(260.0, py + vy * 0.22));
+    const goalY = Math.max(12.0, Math.min(GAME_MAX_ALTITUDE - 30.0, baseGoalY + Math.sin(e.phase * 1.3) * 6.5));
 
     const gx = goalX - e.x, gy = goalY - e.y, gz = goalZ - e.z;
     const gDist = Math.hypot(gx, gy, gz) || 1.0;
 
-    // 멀리 있을수록 빠르게 따라붙어 스윙 오라/고압 거미줄 사거리 안으로 자연스럽게 유입
-    const baseChaseSpd = 34.0 + Math.min(18.0, wave * 2.2);
-    const catchUpBoost = dist3D > 95.0 ? Math.min(36.0, (dist3D - 95.0) * 0.28) : 0.0;
+    const baseChaseSpd = 38.0 + Math.min(20.0, wave * 2.4);
+    const catchUpBoost = dist3D > 85.0 ? Math.min(48.0, (dist3D - 85.0) * 0.34) : 0.0;
     const chaseSpd = baseChaseSpd + catchUpBoost;
 
     const desVx = (gx / gDist) * chaseSpd;
     const desVy = (gy / gDist) * chaseSpd;
     const desVz = (gz / gDist) * chaseSpd;
 
-    const steer = Math.min(1.0, 3.8 * dt);
+    const steer = Math.min(1.0, 4.2 * dt);
     e.vx += (desVx - e.vx) * steer;
     e.vy += (desVy - e.vy) * steer;
     e.vz += (desVz - e.vz) * steer;
@@ -1321,11 +1346,14 @@ function updateEnemyMovementAI(e, dt, bList) {
     e.x = safe.x;
     e.z = safe.z;
   } else {
-    // === 2단계(MEDIUM) & 3단계(ELITE): 적정 거리를 유지하며 측면 선회 + 원거리 공격 ===
-    if (dist3D > 430.0) {
-      const pullYaw = camYaw + (Math.random() - 0.5) * 1.1;
-      const pullDist = (e.minRange + e.maxRange) * 0.5 + 35.0;
-      const targetY = Math.max(e.altMin, Math.min(e.altMax, py + e.altOffset));
+    // === 2단계(MEDIUM) & 3단계(ELITE): 고도층 분리 + 전방 시야 안쪽 우선 선회 ===
+    const anchorY = e.anchorAlt !== undefined ? e.anchorAlt : ((e.altMin + e.altMax) * 0.5);
+    if (dist3D > 385.0 || (hSpd > 40.0 && fwdProj < -175.0)) {
+      const pullYaw = Math.atan2(moveSin, moveCos) + (Math.random() - 0.5) * 1.15;
+      const pullDist = (e.minRange + e.maxRange) * 0.5 + 24.0;
+      const targetY = e.type === 'WALL_TURRET'
+        ? Math.max(e.altMin, Math.min(e.altMax, anchorY))
+        : Math.max(e.altMin, Math.min(e.altMax, py > 135.0 ? Math.min(anchorY + 20.0, py - 24.0) : anchorY));
       const safe = pushOutOfBuildings(px + Math.sin(pullYaw) * pullDist, targetY, pz + Math.cos(pullYaw) * pullDist, 20.0, bList);
       e.x = safe.x; e.y = targetY; e.z = safe.z;
       e.vx = 0; e.vy = 0; e.vz = 0;
@@ -1333,28 +1361,41 @@ function updateEnemyMovementAI(e, dt, bList) {
     }
 
     const hDist = Math.hypot(dxFromP, dzFromP) || 1.0;
-    // rx, rz: 플레이어로부터 멀어지는 수평 단위벡터 / tx, tz: 측면 선회 단위벡터
     const rx = dxFromP / hDist;
     const rz = dzFromP / hDist;
+
+    // 플레이어 등 뒤로 도망치지 않도록 시야 밖(fwdDot < 0.45)이면 전방 시야 쪽으로 선회 방향 보정
+    const fwdDot = rx * camSin + rz * camCos;
+    const tDotF = (-rz * e.orbitDir) * camSin + (rx * e.orbitDir) * camCos;
+    if (fwdDot < 0.45 && tDotF < 0) {
+      e.orbitDir = -e.orbitDir;
+    }
+
     const tx = -rz * e.orbitDir;
     const tz = rx * e.orbitDir;
 
     let radialSpd = 0.0;
-    let strafeSpd = e.tier === 'ELITE' ? 16.0 : 20.0;
+    let strafeSpd = (e.tier === 'ELITE' ? 16.0 : 20.0) * (fwdDot < 0.45 ? 1.45 : 1.0);
 
     if (hDist < e.minRange) {
-      // 너무 가까워지면 거리를 벌리며 후퇴·선회
       const closeRatio = Math.min(1.0, (e.minRange - hDist) / 55.0);
-      radialSpd = 20.0 + closeRatio * 24.0;
-      strafeSpd = 18.0;
+      radialSpd = 18.0 + closeRatio * 22.0;
+      strafeSpd = Math.max(strafeSpd, 18.0);
     } else if (hDist > e.maxRange) {
-      // 사거리 밖으로 멀어지면 천천히 다가와 사격 거리 확보
       const farRatio = Math.min(1.0, (hDist - e.maxRange) / 90.0);
-      radialSpd = -(22.0 + farRatio * 34.0);
-      strafeSpd = 14.0;
+      radialSpd = -(24.0 + farRatio * 36.0);
     }
 
-    const desiredY = Math.max(e.altMin, Math.min(e.altMax, py + e.altOffset)) + Math.sin(e.phase * 1.05) * 6.0;
+    // 고도층 분리: WALL_TURRET은 저공(16~68m) 고정, SKY/ELITE는 고공 플레이어 아래에 남아 SLAM 표적 제공
+    let baseY;
+    if (e.type === 'WALL_TURRET') {
+      baseY = anchorY;
+    } else if (py > 135.0) {
+      baseY = Math.max(e.altMin, Math.min(e.altMax, Math.min(anchorY + 25.0, py - 24.0)));
+    } else {
+      baseY = Math.max(e.altMin, Math.min(e.altMax, anchorY * 0.65 + (py + e.altOffset) * 0.35));
+    }
+    const desiredY = baseY + Math.sin(e.phase * 1.05) * 5.0;
     const desVx = rx * radialSpd + tx * strafeSpd;
     const desVz = rz * radialSpd + tz * strafeSpd;
     const desVy = Math.max(-28.0, Math.min(28.0, (desiredY - e.y) * 1.4));
@@ -1365,7 +1406,7 @@ function updateEnemyMovementAI(e, dt, bList) {
     e.vz += (desVz - e.vz) * steer;
 
     e.x += e.vx * dt;
-    e.y = Math.max(24.0, Math.min(GAME_MAX_ALTITUDE - 25.0, e.y + e.vy * dt));
+    e.y = Math.max(14.0, Math.min(GAME_MAX_ALTITUDE - 25.0, e.y + e.vy * dt));
     e.z += e.vz * dt;
 
     const safe = pushOutOfBuildings(e.x, e.y, e.z, 16.0, bList);
@@ -2175,6 +2216,100 @@ function drawEnemyRadarHUD() {
   ctx.fillText(distStr, bx + 3, 32);
 }
 
+// 화면 밖 주요 적 테두리 방향 마커 (최대 3개: ELITE > 최인접 MEDIUM > 최인접 SWARM, ESP32-S3 초경량 벡터)
+function drawOffscreenEnemyMarkers(cb) {
+  if (enemies.length === 0) return;
+
+  const elites = [];
+  const mediums = [];
+  let nearestSwarm = null;
+  let nearestSwarmDist = 99999;
+
+  for (let i = 0; i < enemies.length; i++) {
+    const e = enemies[i];
+    const c = worldToCam(e.x, e.y, e.z, cb);
+    let sx = 0, sy = 0;
+    if (c.z > NEAR_Z) {
+      sx = (c.x / c.z) * cb.d + LCD_W * 0.5 + cb.sx;
+      sy = (-c.y / c.z) * cb.d + LCD_H * 0.5 + cb.sy;
+      if (sx >= 8 && sx <= LCD_W - 14 && sy >= 12 && sy <= LCD_H - 14) continue;
+    }
+
+    const dist = Math.hypot(e.x - px, e.y - py, e.z - pz);
+    const entry = { e, c, sx, sy, dist };
+    if (e.tier === 'ELITE') {
+      elites.push(entry);
+    } else if (e.tier === 'MEDIUM') {
+      mediums.push(entry);
+    } else if (dist < nearestSwarmDist) {
+      nearestSwarmDist = dist;
+      nearestSwarm = entry;
+    }
+  }
+
+  elites.sort((a, b) => a.dist - b.dist);
+  mediums.sort((a, b) => a.dist - b.dist);
+
+  const markers = [];
+  for (let i = 0; i < elites.length && markers.length < 2; i++) markers.push(elites[i]);
+  for (let i = 0; i < mediums.length && markers.length < 3; i++) markers.push(mediums[i]);
+  if (nearestSwarm && markers.length < 3) markers.push(nearestSwarm);
+  if (markers.length === 0) return;
+
+  const cx0 = LCD_W * 0.5, cy0 = LCD_H * 0.5;
+  const minX = 9, maxX = LCD_W - 17, minY = 12, maxY = LCD_H - 14;
+
+  for (let i = 0; i < markers.length; i++) {
+    const m = markers[i];
+    let dirX, dirY;
+    if (m.c.z > NEAR_Z) {
+      dirX = m.sx - cx0;
+      dirY = m.sy - cy0;
+    } else {
+      dirX = m.c.x;
+      dirY = -m.c.y;
+      if (Math.abs(dirX) < 10) dirX = (dirX >= 0 ? 1 : -1) * 10;
+    }
+    if (Math.abs(dirX) < 0.001 && Math.abs(dirY) < 0.001) dirY = 1.0;
+
+    const tx = dirX > 0 ? (maxX - cx0) / dirX : (dirX < 0 ? (minX - cx0) / dirX : 1e9);
+    const ty = dirY > 0 ? (maxY - cy0) / dirY : (dirY < 0 ? (minY - cy0) / dirY : 1e9);
+    const t = Math.min(tx, ty);
+    const ex = Math.max(minX, Math.min(maxX, Math.round(cx0 + dirX * t)));
+    let ey = Math.max(minY, Math.min(maxY, Math.round(cy0 + dirY * t)));
+
+    // 상단 좌/우 HUD 박스 영역 침범 방지
+    if (ey < 56 && ex < 122) ey = 56;
+    if (ey < 52 && ex > LCD_W - 130) ey = 52;
+
+    const ang = Math.atan2(dirY, dirX);
+    const isElite = m.e.tier === 'ELITE';
+    const isSwarm = m.e.tier === 'SWARM';
+    const sz = isElite ? 5.0 : (isSwarm ? 3.2 : 4.0);
+    const col = isElite ? PAL.GOLD
+      : (isSwarm ? PAL.NEON_CYAN : (m.e.type === 'WALL_TURRET' ? PAL.ORANGE : PAL.NEON_PINK));
+
+    const x1 = (ex + Math.cos(ang) * sz) | 0;
+    const y1 = (ey + Math.sin(ang) * sz) | 0;
+    const x2 = (ex + Math.cos(ang + 2.35) * sz) | 0;
+    const y2 = (ey + Math.sin(ang + 2.35) * sz) | 0;
+    const x3 = (ex + Math.cos(ang - 2.35) * sz) | 0;
+    const y3 = (ey + Math.sin(ang - 2.35) * sz) | 0;
+
+    ctx.fillStyle = PAL.INDIGO_OUTLINE;
+    ctx.beginPath();
+    ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.lineTo(x3, y3);
+    ctx.closePath(); ctx.fill();
+
+    ctx.fillStyle = col;
+    ctx.beginPath();
+    ctx.moveTo((ex + Math.cos(ang) * (sz - 1)) | 0, (ey + Math.sin(ang) * (sz - 1)) | 0);
+    ctx.lineTo((ex + Math.cos(ang + 2.35) * (sz - 1.2)) | 0, (ey + Math.sin(ang + 2.35) * (sz - 1.2)) | 0);
+    ctx.lineTo((ex + Math.cos(ang - 2.35) * (sz - 1.2)) | 0, (ey + Math.sin(ang - 2.35) * (sz - 1.2)) | 0);
+    ctx.closePath(); ctx.fill();
+  }
+}
+
 function drawSpiderManSprite(cb, totalSpeed) {
   const centerPt = projectWorldPt(px, py, pz, cb);
   if (!centerPt) return null;
@@ -2894,12 +3029,20 @@ function tick(now) {
     let targetPitch;
     if (strikeTarget && strikeMode !== 0) {
       const sDx = strikeTarget.x - px, sDy = strikeTarget.y - py, sDz = strikeTarget.z - pz;
-      targetPitch = Math.max(-0.85, Math.min(0.55, Math.atan2(sDy, Math.hypot(sDx, sDz) || 1.0)));
+      targetPitch = Math.max(-0.92, Math.min(0.55, Math.atan2(sDy, Math.hypot(sDx, sDz) || 1.0)));
     } else {
-      const normAlt = Math.max(0.0, Math.min(1.0, (py - 14.0) / 380.0));
-      const descentLook = (!isSwinging && vy < -10.0 && py > 24.0) ? Math.max(-0.35, vy * 0.0045) : (vy * 0.0014);
-      const divePitchBias = isDiving ? -0.22 : (isGliding ? 0.06 : 0.0);
-      targetPitch = Math.max(-0.88, Math.min(0.45, 0.16 - normAlt * 0.62 + descentLook + divePitchBias));
+      const normAlt = Math.max(0.0, Math.min(1.0, (py - 14.0) / 360.0));
+      const descentLook = (!isSwinging && vy < -10.0 && py > 24.0) ? Math.max(-0.50, vy * 0.0062) : (vy * 0.0014);
+      const divePitchBias = isDiving ? -0.26 : (isGliding ? 0.05 : 0.0);
+      // 저공 고속 주행(캐니언 스침/전방 돌파) 시 하늘 대신 도로 앞길과 저공 터렛이 정면에 들어오도록 수평 보정
+      const lowSpeedLevel = (py < 30.0 && totalSpeed > 45.0) ? -0.11 : 0.0;
+      targetPitch = Math.max(-0.96, Math.min(0.42, 0.14 - normAlt * 0.64 + descentLook + divePitchBias + lowSpeedLevel));
+      // 고공 하강 중 발밑 SLAM 락온 표적이 있으면 시선을 부드럽게 표적 쪽으로 35% 기울여 가시성 확보
+      if (homingTarget && !isSwinging && (isDiving || vy < -18.0) && homingTarget.y < py - 10.0) {
+        const hDx = homingTarget.x - px, hDy = homingTarget.y - py, hDz = homingTarget.z - pz;
+        const aimPitch = Math.max(-0.96, Math.min(0.15, Math.atan2(hDy, Math.hypot(hDx, hDz) || 1.0)));
+        targetPitch = targetPitch * 0.65 + aimPitch * 0.35;
+      }
     }
     camPitch += (targetPitch - camPitch) * 8.0 * dt;
 
@@ -3368,6 +3511,10 @@ function tick(now) {
     ctx.strokeStyle = 'rgba(232, 40, 72, ' + Math.min(0.85, damageFlash * 2.4).toFixed(2) + ')';
     ctx.lineWidth = 6;
     ctx.strokeRect(3, 3, LCD_W - 6, LCD_H - 6);
+  }
+
+  if (!augmentDraftOpen && !gameOver) {
+    drawOffscreenEnemyMarkers(cb);
   }
 
   const drawPC98Box = (x, y, w, h, accent = '#68b0f0') => {
