@@ -58,12 +58,13 @@
 
 ### 3-2. 5단계 스타일 랭크 (`D → C → B → A → S`) & 배경·화력 연동 (점수제 폐지)
 - 기존 단순 점수제(`score`, `bestScore`)를 폐지하고 **스타일 게이지(`stylePoints`, `0~100`)** 기반 5단계 랭크로 전환.
+- **우측 대형 엠블럼 HUD (DMC / 사미라 감성):** 사전 베이크 `28×32` 샤프 세리프 PC-98 픽셀 알파벳(`D/C/B/A/S`, `styleRankSprites`)을 화면 우측 중앙(`cx=274, cy=62`)에 대형 표시 + 시계 방향 원형 랭크 게이지 링·내부 유지 타이머 링·랭크업 탄성 팝업·방사형 버스트·`S`랭크 스파크·하단 태그라인(`DISMAL / CRAZY! / BADASS! / AMAZING! / SAVAGE!!`) 및 `DMG 1.XXx` 뱃지 연동.
 - 랭크가 오를수록 **사전 베이크된 5종 PC-98 배경 팔레트·파노라마가 실시간 전환**되며, 고수 보상은 생존 완화가 아닌 **순수 STRIKE 화력 배율**로 지급:
-  - **`D`** (`0~19`, `SUMMER DAY`): **`1.00x`**
-  - **`C`** (`20~39`, `AMBER AFTERNOON`): **`1.10x`**
-  - **`B`** (`40~59`, `GOLDEN SUNSET`): **`1.22x`**
-  - **`A`** (`60~79`, `NEON NIGHT` — 네온 창문/안테나 점등): **`1.38x`**
-  - **`S`** (`80~100`, `CRIMSON OVERDRIVE` — 개기월식 피버 야경 + 치명타 확정): **`1.60x`**
+  - **`D`** (`0~19`, `DISMAL`, `SUMMER DAY`): **`1.00x`**
+  - **`C`** (`20~39`, `CRAZY!`, `AMBER AFTERNOON`): **`1.10x`**
+  - **`B`** (`40~59`, `BADASS!`, `GOLDEN SUNSET`): **`1.22x`**
+  - **`A`** (`60~79`, `AMAZING!`, `NEON NIGHT` — 네온 창문/안테나 점등): **`1.38x`**
+  - **`S`** (`80~100`, `SAVAGE!!`, `CRIMSON OVERDRIVE` — 개기월식 피버 야경 + 치명타 확정): **`1.60x`**
 - **유지·냉각·피격 페널티:**
   - 곡예(`PERFECT +12`, `DIVE +10`, `DEFLECT +10`, `BIG ARC +5`, `WALL SLIDE +6`, `SKIM +6~14/s`) 및 전투(`STRIKE +8~12`, 처치 `SWARM +3 / MEDIUM +10 / ELITE +20`)로 게이지 상승 및 `comboTimer` 갱신.
   - `comboTimer` 만료 후 정체 시 초당 `-14`씩 단계적 냉각(`S → A → B → C → D`).

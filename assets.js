@@ -39,11 +39,11 @@
     const CASE3_MIN_FREEZE_DUR = 0.08;
 
     const STYLE_RANKS = [
-      { label: 'D', minPts: 0,  dmgMult: 1.00, col: '#8fb8e6' },
-      { label: 'C', minPts: 20, dmgMult: 1.10, col: '#54f8ff' },
-      { label: 'B', minPts: 40, dmgMult: 1.22, col: '#ff9436' },
-      { label: 'A', minPts: 60, dmgMult: 1.38, col: '#ff5cf4' },
-      { label: 'S', minPts: 80, dmgMult: 1.60, col: '#ffe55c' }
+      { label: 'D', word: 'DISMAL',   minPts: 0,  dmgMult: 1.00, col: '#94b8e0' },
+      { label: 'C', word: 'CRAZY!',   minPts: 20, dmgMult: 1.10, col: '#54f8ff' },
+      { label: 'B', word: 'BADASS!',  minPts: 40, dmgMult: 1.22, col: '#ff9436' },
+      { label: 'A', word: 'AMAZING!', minPts: 60, dmgMult: 1.38, col: '#ff5cf4' },
+      { label: 'S', word: 'SAVAGE!!', minPts: 80, dmgMult: 1.60, col: '#ffe55c' }
     ];
 
     const BAYER4 = [
@@ -204,6 +204,7 @@
     const STAGE_PATTERNS = [];
     const cloud2Sprites = [];
     const panoramaCanvases = [];
+    const styleRankSprites = [];
     const spideySprites = {};
     let treeSprite = null;
     let waterTowerSprite = null;
@@ -888,5 +889,250 @@
         g.fillStyle = '#141933';
         g.fillRect(2, 6, 3, 2); g.fillRect(9, 6, 3, 2);
         taxiSprite = c;
+      }
+    }
+
+    // Pre-Baked 28x32 DMC / Samira Sharp-Serif PC-98 Pixel Style Rank Sprites (D / C / B / A / S)
+    function bakeStyleRankSprites() {
+      const GLYPHS = [
+        // 0: D (sharp top-left spear + gothic bow + bottom-left razor spur)
+        [
+          '........###########...',
+          '......##############..',
+          '....######....#######.',
+          '..#####........######.',
+          '.....#####......#####.',
+          '.....#####......#####.',
+          '.....#####......#####.',
+          '.....#####......#####.',
+          '.....#####......#####.',
+          '.....#####......#####.',
+          '.....#####......#####.',
+          '.....#####......#####.',
+          '.....#####......#####.',
+          '.....#####......#####.',
+          '.....#####......#####.',
+          '.....#####......#####.',
+          '.....#####......#####.',
+          '.....#####......#####.',
+          '.....#####.....######.',
+          '....######....#######.',
+          '...#################..',
+          '..################....',
+          '.######...............',
+          '####..................',
+          '##....................'
+        ],
+        // 1: C (sharp DMC beak top-left + curved spine + flared bottom tail)
+        [
+          '......#############...',
+          '....#################.',
+          '..########.....######.',
+          '.######..........####.',
+          '#####.................',
+          '#####.................',
+          '#####.................',
+          '#####.................',
+          '#####.................',
+          '#####.................',
+          '#####.................',
+          '#####.................',
+          '#####.................',
+          '#####.................',
+          '#####.................',
+          '#####.................',
+          '#####.................',
+          '#####.................',
+          '.#####..........####..',
+          '..######.......######.',
+          '...##################.',
+          '....################..',
+          '......############....',
+          '......................',
+          '......................'
+        ],
+        // 2: B (gothic blade top-left + twin angular lobes + bottom-left spur)
+        [
+          '.....############.....',
+          '...###############....',
+          '..######.....######...',
+          '.....#####....#####...',
+          '.....#####....#####...',
+          '.....#####....#####...',
+          '.....#####...######...',
+          '.....#############....',
+          '.....############.....',
+          '.....#############....',
+          '.....#####...######...',
+          '.....#####....######..',
+          '.....#####.....#####..',
+          '.....#####.....#####..',
+          '.....#####.....#####..',
+          '.....#####.....#####..',
+          '.....#####.....#####..',
+          '.....#####....######..',
+          '....################..',
+          '...################...',
+          '..######..............',
+          '.####.................',
+          '##....................',
+          '......................',
+          '......................'
+        ],
+        // 3: A (slanted dynamic apex + flared crossbar + razor bottom-left blade)
+        [
+          '...........######.....',
+          '..........#######.....',
+          '.........#########....',
+          '........##########....',
+          '........#####.#####...',
+          '.......#####..#####...',
+          '.......#####..#####...',
+          '......#####...#####...',
+          '......#####...#####...',
+          '.....#####....#####...',
+          '.....#####....#####...',
+          '....###############...',
+          '...#################..',
+          '..##################..',
+          '..#####.......######..',
+          '.#####........######..',
+          '.#####........######..',
+          '#####..........#####..',
+          '#####..........######.',
+          '####...........#######',
+          '###.............######',
+          '##....................',
+          '#.....................',
+          '......................',
+          '......................'
+        ],
+        // 4: S (iconic fiery DMC S: razor top-right crest + bold diagonal + razor bottom-left spur)
+        [
+          '.......##############.',
+          '.....################.',
+          '....#######.....####..',
+          '...######.............',
+          '..######..............',
+          '..#####...............',
+          '..######..............',
+          '...#######............',
+          '....#########.........',
+          '......##########......',
+          '........##########....',
+          '..........#########...',
+          '............########..',
+          '..............######..',
+          '..............######..',
+          '..............######..',
+          '.............#######..',
+          '............########..',
+          '..####....#########...',
+          '.##################...',
+          '################......',
+          '#############.........',
+          '#####.................',
+          '###...................',
+          '#.....................'
+        ]
+      ];
+
+      // 4-tone PC-98 palettes per rank: [bevelHi, topTone, midTone, deepTone, outline]
+      const PALETTES = [
+        ['#ffffff', '#d8e6f8', '#8aa0c2', '#4a5c80', '#0a0f24'], // D: Steely Silver
+        ['#ffffff', '#a8f8ff', '#38d8f8', '#1c6ca8', '#081228'], // C: Electric Ice Cyan
+        ['#fff8d0', '#ffd068', '#ff8828', '#b83218', '#1c0a18'], // B: Blazing Amber
+        ['#ffeaff', '#ff98f8', '#e83cf0', '#7e189c', '#180824'], // A: Neon Magenta
+        ['#ffffff', '#fff278', '#ffa028', '#d82038', '#140410']  // S: Fiery Gold-Crimson
+      ];
+
+      styleRankSprites.length = 0;
+      const W = 28, H = 32;
+      const ox = 3, oy = 3;
+
+      for (let idx = 0; idx < GLYPHS.length; idx++) {
+        const rows = GLYPHS[idx];
+        const pal = PALETTES[idx];
+        const mask = new Uint8Array(W * H);
+
+        for (let ry = 0; ry < rows.length; ry++) {
+          const line = rows[ry];
+          for (let rx = 0; rx < line.length; rx++) {
+            if (line.charAt(rx) === '#') {
+              const x = ox + rx, y = oy + ry;
+              if (x >= 0 && x < W && y >= 0 && y < H) {
+                mask[y * W + x] = 1;
+              }
+            }
+          }
+        }
+
+        const c = document.createElement('canvas');
+        c.width = W; c.height = H;
+        const g = c.getContext('2d');
+
+        // 1) Crisp 2px drop shadow
+        g.fillStyle = '#070914';
+        for (let y = 0; y < H; y++) {
+          for (let x = 0; x < W; x++) {
+            if (mask[y * W + x]) {
+              if (x + 2 < W && y + 2 < H) g.fillRect(x + 2, y + 2, 1, 1);
+            }
+          }
+        }
+
+        // 2) Thick 2px dark outline around letter silhouette
+        g.fillStyle = pal[4];
+        for (let y = 0; y < H; y++) {
+          for (let x = 0; x < W; x++) {
+            if (mask[y * W + x]) continue;
+            let near = false;
+            for (let dy = -1; dy <= 1 && !near; dy++) {
+              for (let dx = -1; dx <= 1; dx++) {
+                const nx = x + dx, ny = y + dy;
+                if (nx >= 0 && nx < W && ny >= 0 && ny < H && mask[ny * W + nx]) {
+                  near = true; break;
+                }
+              }
+            }
+            if (near) g.fillRect(x, y, 1, 1);
+          }
+        }
+
+        // 3) Metallic/flame Bayer4 dither gradient + diagonal sheen + 1px top-left bevel
+        for (let y = 0; y < H; y++) {
+          for (let x = 0; x < W; x++) {
+            if (!mask[y * W + x]) continue;
+            const topEmpty = (y === 0) || !mask[(y - 1) * W + x];
+            const leftEmpty = (x === 0) || !mask[y * W + (x - 1)];
+            const botEmpty = (y === H - 1) || !mask[(y + 1) * W + x];
+            if (topEmpty || (leftEmpty && y < H * 0.65)) {
+              g.fillStyle = pal[0];
+              g.fillRect(x, y, 1, 1);
+              continue;
+            }
+            if (botEmpty) {
+              g.fillStyle = pal[3];
+              g.fillRect(x, y, 1, 1);
+              continue;
+            }
+            // Diagonal metallic/fire wave + vertical gradient with Bayer4 dithering
+            const sheen = Math.sin((x * 0.32 + y * 0.24) + idx * 0.9) * 0.16;
+            const t = Math.max(0, Math.min(1, (y - oy) / 23.0 + sheen));
+            const b4 = BAYER4[y & 3][x & 3] / 16.0;
+            let col;
+            if (t < 0.34) {
+              col = (t / 0.34) > b4 ? pal[2] : pal[1];
+            } else if (t < 0.72) {
+              col = ((t - 0.34) / 0.38) > b4 ? pal[3] : pal[2];
+            } else {
+              col = pal[3];
+            }
+            g.fillStyle = col;
+            g.fillRect(x, y, 1, 1);
+          }
+        }
+
+        styleRankSprites.push(c);
       }
     }

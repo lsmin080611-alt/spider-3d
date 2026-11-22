@@ -85,6 +85,9 @@ let runTimerZeroTriggered = false;
 let stylePoints = 0.0;
 let styleRankIdx = 0;
 let peakStyleRankIdx = 0;
+let stylePopTimer = 0.0;
+let stylePopDir = 1;
+let stylePulseTimer = 0.0;
 let swingCombo = 0;
 let comboTimer = 0;
 let wallSkimIntensity = 0, wallSkimSide = 0, groundSkimIntensity = 0;
@@ -286,6 +289,8 @@ function syncStageFromStyleRank(announce = true) {
     currentStage = styleRankIdx;
     setStageIndicator(currentStage);
     if (announce && styleRankIdx > prev) {
+      stylePopTimer = 0.34;
+      stylePopDir = 1;
       const info = STYLE_RANKS[styleRankIdx];
       const rankBanners = [
         'RANK D',
@@ -303,6 +308,9 @@ function syncStageFromStyleRank(announce = true) {
 function addStylePoints(pts, minComboTimer = 0) {
   if (pts <= 0 || gameOver) return;
   stylePoints = Math.min(100.0, stylePoints + pts);
+  if (pts >= 2.0) {
+    stylePulseTimer = Math.max(stylePulseTimer, 0.14);
+  }
   if (minComboTimer > 0) {
     comboTimer = Math.max(comboTimer, minComboTimer);
   }
@@ -322,6 +330,10 @@ function dropStyleRanks(ranks, reasonText = null, reasonColor = '#ff6b81') {
   }
   swingCombo = 0;
   comboTimer = targetRank > 0 ? 2.2 : 0.0;
+  if (prevRank > targetRank) {
+    stylePopTimer = 0.28;
+    stylePopDir = -1;
+  }
   syncStageFromStyleRank(false);
   if (reasonText) {
     const rankTag = prevRank > targetRank ? (' [RANK ' + STYLE_RANKS[targetRank].label + ']') : '';
@@ -638,6 +650,9 @@ function resetGame() {
   stylePoints = 0.0;
   styleRankIdx = 0;
   peakStyleRankIdx = 0;
+  stylePopTimer = 0.0;
+  stylePopDir = 1;
+  stylePulseTimer = 0.0;
   swingCombo = 0; comboTimer = 0;
   wallSkimIntensity = 0; wallSkimSide = 0; groundSkimIntensity = 0;
   wallSlideCooldown = 0;
@@ -2667,6 +2682,8 @@ function tick(now) {
     if (invulnTimer > 0) invulnTimer = Math.max(0, invulnTimer - dt);
     if (damageFlash > 0) damageFlash = Math.max(0, damageFlash - dt);
     if (shakeMag > 0) shakeMag = Math.max(0, shakeMag - 12.0 * dt);
+    if (stylePopTimer > 0) stylePopTimer = Math.max(0, stylePopTimer - dt);
+    if (stylePulseTimer > 0) stylePulseTimer = Math.max(0, stylePulseTimer - dt);
     if (perfectBuffTimer > 0) perfectBuffTimer = Math.max(0, perfectBuffTimer - dt);
     if (elasticCritTimer > 0) elasticCritTimer = Math.max(0, elasticCritTimer - dt);
     if (strikeRushTimer > 0) {
@@ -3815,40 +3832,143 @@ function tick(now) {
 
   drawEnemyRadarHUD();
 
-  // 우측 상단 웨이브 · 5단계 스타일 랭크(D/C/B/A/S) · 화력 배율 박스
+  // 우측 상단 컴팩트 웨이브·콤보·픽 정보 박스 (24px 높이로 축소해 우측 대형 랭크 엠블럼 공간 확보)
   const rankInfo = STYLE_RANKS[styleRankIdx] || STYLE_RANKS[0];
-  const rankProgress = styleRankIdx >= STYLE_RANKS.length - 1
-    ? Math.max(0.0, Math.min(1.0, (stylePoints - rankInfo.minPts) / 20.0))
-    : Math.max(0.0, Math.min(1.0, (stylePoints - rankInfo.minPts) / 20.0));
-  drawPC98Box(LCD_W - 126, 4, 110, 44, styleRankIdx >= 2 ? rankInfo.col : '#8fb8e6');
+  const rankProgress = Math.max(0.0, Math.min(1.0, (stylePoints - rankInfo.minPts) / 20.0));
+  drawPC98Box(LCD_W - 122, 4, 106, 24, styleRankIdx >= 2 ? rankInfo.col : '#8fb8e6');
   ctx.font = 'bold 8px Consolas, monospace';
   ctx.fillStyle = PAL.NEON_CYAN;
-  ctx.fillText('W' + wave + ' FOES:' + String(enemies.length).padStart(2, ' ') + ' K:' + kills, LCD_W - 121, 13);
-
-  ctx.fillStyle = rankInfo.col;
-  ctx.fillText('RANK ' + rankInfo.label + '  DMG ' + rankInfo.dmgMult.toFixed(2) + 'x', LCD_W - 121, 23);
-
-  // 스타일 랭크 게이지 바
-  ctx.fillStyle = '#18203c';
-  ctx.fillRect(LCD_W - 122, 26, 102, 4);
-  ctx.fillStyle = rankInfo.col;
-  ctx.fillRect(LCD_W - 122, 26, Math.round(rankProgress * 102), 4);
-  ctx.strokeStyle = '#475569';
-  ctx.strokeRect(LCD_W - 122.5, 25.5, 103, 5);
-
+  ctx.fillText('W' + wave + ' FOES:' + String(enemies.length).padStart(2, ' ') + ' K:' + kills, LCD_W - 118, 13);
   const pickTxt = overpowerStacks > 0
     ? ('PWR+' + (overpowerStacks * 5) + '%')
     : ('PK ' + Math.min(12, totalAugmentsPicked) + '/12');
   ctx.fillStyle = swingCombo > 0 ? '#cceeff' : '#8fb8e6';
-  ctx.fillText('CMB x' + String(swingCombo).padEnd(2, ' ') + ' ' + pickTxt, LCD_W - 121, 39);
+  ctx.fillText('CMB x' + String(swingCombo).padEnd(2, ' ') + ' ' + pickTxt, LCD_W - 118, 23);
 
-  if (comboTimer > 0 && stylePoints > 0) {
-    const cw = Math.min(102, (comboTimer / 4.6) * 102);
-    ctx.fillStyle = rankInfo.col;
-    ctx.fillRect(LCD_W - 122, 44, cw | 0, 2);
-  }
-
+  // 우측 중앙: DMC / 사미라 스타일 대형 알파벳 랭크 엠블럼 (320x170 초경량 스프라이트 + 원형 링 게이지)
   if (!augmentDraftOpen && !gameOver) {
+    const cx = 274;
+    const cy = 62;
+    const ringR = 23;
+    const isSRank = styleRankIdx >= 4;
+
+    // 랭크업 탄성 팝업 스케일 / 강등 진동 / 액션 펄스
+    let sprScale = 1.24;
+    let shakeX = 0, shakeY = 0;
+    if (stylePopTimer > 0) {
+      const t = stylePopTimer / 0.34;
+      if (stylePopDir > 0) {
+        sprScale = 1.24 + t * 0.44;
+      } else {
+        shakeX = Math.round(((Math.floor(performance.now() / 40) & 1) ? 1 : -1) * 3 * t);
+        shakeY = Math.round(((Math.floor(performance.now() / 55) & 1) ? 1 : -1) * 2 * t);
+      }
+    } else if (stylePulseTimer > 0) {
+      sprScale = 1.24 + (stylePulseTimer / 0.14) * 0.10;
+    } else if (isSRank) {
+      // S랭크 각성 미세 고동
+      sprScale = 1.26 + Math.sin(simTime * 11.0) * 0.04;
+    }
+
+    const rcx = cx + shakeX;
+    const rcy = cy + shakeY;
+
+    // 1) 어두운 원형 백플레이트 + 외곽선
+    ctx.beginPath();
+    ctx.arc(rcx, rcy, ringR + 2, 0, Math.PI * 2);
+    ctx.fillStyle = stylePoints > 0 ? 'rgba(10, 14, 30, 0.78)' : 'rgba(10, 14, 30, 0.48)';
+    ctx.fill();
+    ctx.lineWidth = 1.5;
+    ctx.strokeStyle = PAL.INDIGO_OUTLINE;
+    ctx.stroke();
+
+    // 2) 외곽 트랙 링 + 시계 방향 스타일 랭크 게이지 아크
+    ctx.beginPath();
+    ctx.arc(rcx, rcy, ringR, 0, Math.PI * 2);
+    ctx.lineWidth = 3;
+    ctx.strokeStyle = '#1e2948';
+    ctx.stroke();
+
+    const arcRatio = isSRank ? Math.max(0.15, rankProgress) : rankProgress;
+    if (arcRatio > 0.01) {
+      ctx.beginPath();
+      ctx.arc(rcx, rcy, ringR, -Math.PI * 0.5, -Math.PI * 0.5 + Math.PI * 2 * arcRatio);
+      ctx.lineWidth = 3;
+      ctx.strokeStyle = rankInfo.col;
+      ctx.stroke();
+    }
+
+    // 3) 내부 콤보 유지 타이머 얇은 링 (시간 감쇠 직관 표시)
+    if (comboTimer > 0 && stylePoints > 0) {
+      const holdRatio = Math.max(0.0, Math.min(1.0, comboTimer / 4.6));
+      ctx.beginPath();
+      ctx.arc(rcx, rcy, ringR - 4, -Math.PI * 0.5, -Math.PI * 0.5 + Math.PI * 2 * holdRatio);
+      ctx.lineWidth = 1.5;
+      ctx.strokeStyle = isSRank ? PAL.CRIMSON : '#cceeff';
+      ctx.stroke();
+    }
+
+    // 4) 랭크업 순간 6방향 방사형 벡터 버스트 라인
+    if (stylePopTimer > 0 && stylePopDir > 0) {
+      const burstProg = 1.0 - (stylePopTimer / 0.34);
+      const rIn = ringR + 2 + burstProg * 4;
+      const rOut = ringR + 8 + burstProg * 8;
+      ctx.strokeStyle = rankInfo.col;
+      ctx.lineWidth = 1.5;
+      for (let bi = 0; bi < 6; bi++) {
+        const ang = (bi / 6) * Math.PI * 2 + 0.35;
+        ctx.beginPath();
+        ctx.moveTo(rcx + Math.cos(ang) * rIn, rcy + Math.sin(ang) * rIn);
+        ctx.lineTo(rcx + Math.cos(ang) * rOut, rcy + Math.sin(ang) * rOut);
+        ctx.stroke();
+      }
+    }
+
+    // 5) S랭크 전용 불꽃 도트 스파크 글린트 (ESP32-S3 초경량 fillRect)
+    if (isSRank) {
+      const tickPhase = Math.floor(performance.now() / 110);
+      for (let si = 0; si < 4; si++) {
+        const ang = ((tickPhase * 0.45) + si * (Math.PI * 0.5));
+        const sx = Math.round(rcx + Math.cos(ang) * (ringR + 3));
+        const sy = Math.round(rcy + Math.sin(ang) * (ringR + 3));
+        ctx.fillStyle = ((tickPhase + si) & 1) ? PAL.GOLD : PAL.ORANGE;
+        ctx.fillRect(sx - 1, sy - 1, 2, 2);
+      }
+    }
+
+    // 6) 사전 베이크 28x32 DMC/사미라 샤프 세리프 픽셀 알파벳 스프라이트 블릿
+    const rSpr = styleRankSprites[styleRankIdx];
+    if (rSpr) {
+      const dw = Math.round(rSpr.width * sprScale);
+      const dh = Math.round(rSpr.height * sprScale);
+      ctx.drawImage(rSpr, Math.round(rcx - dw * 0.5), Math.round(rcy - dh * 0.5 + 1), dw, dh);
+    }
+
+    // 7) 엠블럼 하단 스타일 태그라인(DISMAL/CRAZY!/BADASS!/AMAZING!/SAVAGE!!) & 화력 배율 뱃지
+    ctx.textAlign = 'center';
+    const wordTxt = rankInfo.word || ('RANK ' + rankInfo.label);
+    ctx.font = 'bold 8px Consolas, monospace';
+    const wBoxW = 58;
+    const wBoxX = cx - (wBoxW >> 1);
+    ctx.fillStyle = '#0c1228';
+    ctx.fillRect(wBoxX, 88, wBoxW, 11);
+    ctx.strokeStyle = styleRankIdx >= 2 ? rankInfo.col : '#475569';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(wBoxX + 0.5, 88.5, wBoxW - 1, 10);
+    ctx.fillStyle = rankInfo.col;
+    ctx.fillText(wordTxt, cx, 96);
+
+    // 화력 배율 뱃지 (고수 보상 직관 확인)
+    const dmgTxt = 'DMG ' + rankInfo.dmgMult.toFixed(2) + 'x';
+    ctx.fillStyle = '#0c1228';
+    ctx.fillRect(wBoxX, 100, wBoxW, 10);
+    ctx.strokeStyle = isSRank ? PAL.GOLD : '#334155';
+    ctx.strokeRect(wBoxX + 0.5, 100.5, wBoxW - 1, 9);
+    ctx.font = 'bold 7.5px Consolas, monospace';
+    ctx.fillStyle = styleRankIdx >= 1 ? '#ffffff' : '#94a3b8';
+    ctx.fillText(dmgTxt, cx, 108);
+    ctx.textAlign = 'left';
+
     drawActiveAugmentsHUD(totalSpeed, isSwinging);
   }
 
@@ -4107,6 +4227,7 @@ function initApp() {
     }
     bakeAllSpideySprites();
     bakePropSprites();
+    bakeStyleRankSprites();
 
     setupControls();
     resetGame();
