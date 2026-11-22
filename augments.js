@@ -1,41 +1,136 @@
 'use strict';
 
 // =========================================================================
-// 스파이더맨 PC-98 로그라이크 증강(카드) 시스템 — 기믹 확장 완전판
-// - 14종 유기적 증강 (물리 변조 4 / 폭발 기믹 4 / 변환·역전 6)
-// - 탄성 반발: 벽면 정면 충돌 전용 반사, 최대 1/2/3회, 배율 0.9x/1.0x/1.1x, STRIKE·PERFECT 전량 재충전
-// - 실력 기반 경험치(XP) 레벨업 증강 + 0.65초 오입력 방지 잠금
-// - 320x170 고대비 한글 카드 UI & 좌측 하단 보유 배지/실시간 스택 표시
+// 스파이더맨 PC-98 로그라이크 증강(카드) 시스템 — 4슬롯 · 13종 · Lv.1~3 각성판
+// - 최대 보유 슬롯: 4슬롯 (4종 x Lv.3 = 12픽 완전체, 만충 시 보유 미완성 증강만 출현)
+// - 13종 로스터 (물리 변조 3 / 핵심 기믹 4 / 규칙 역전 2 / 물리 변환 4)
+//   * 삭제: 달의 인력, 고압 거미줄, 구름 앵커
+//   * 신규: 올가미 스윙 (포획 배달 기폭), 연속 돌격 (수동 Shift + 핀볼 연타 증폭/속도보존)
+//   * 리워크: 전격 오라 (고속 주행 특화), 체공 예열 (범위 삭제·단일 극딜), 진공 활공 (Lv.1~3 차등)
+// - Lv.1(입문) -> Lv.2(강화) -> Lv.3(★각성) 단계별 동적 카드 설명 & 0.65초 오입력 방지
 // =========================================================================
 
 const MAX_AUG_LEVEL = 3;
+const MAX_AUG_SLOTS = 4;
 
 const AUGMENTS = [
-  // ① 물리 변조 (유불리 트레이드오프)
-  { id: 'heavy_suit',    tag: '변조', name: '초중력 슈트',   col: '#ff9436', desc: ['중력 1.55배', 'STRIKE +45%', 'C1 충격파↑'] },
-  { id: 'moon_pull',     tag: '변조', name: '달의 인력',     col: '#54f8ff', desc: ['중력 0.55배', '락온·선회↑', '고공 체공↑'] },
-  { id: 'overdrive',     tag: '변조', name: '오버드라이브',  col: '#ff5cf4', desc: ['최대속도1.5x', '추진력 +35%', '선회 둔화'] },
-  { id: 'bungee_web',    tag: '변조', name: '고탄성 번지줄', col: '#ffe55c', desc: ['상승반동1.45x', '650m 고공도약', '저점 깊어짐'] },
+  // ① 물리 변조 (3종 — 단점은 Lv.1 기준 고정, 장점·각성은 단계별 폭발)
+  {
+    id: 'heavy_suit', tag: '변조', name: '초중력 슈트', col: '#ff9436',
+    levels: [
+      ['중력 1.55x 고정', 'STRIKE +20%', 'SLAM 충격파 40m'],
+      ['STRIKE +45%', 'SLAM 충격파 60m', '하강 화력 강화'],
+      ['STRIKE +80%', 'SLAM 충격파 85m', '★SLAM 탄막소거+치명']
+    ]
+  },
+  {
+    id: 'overdrive', tag: '변조', name: '오버드라이브', col: '#ff5cf4',
+    levels: [
+      ['최대속도 1.22x', '추진력 +15%', '선회 0.74x 고정'],
+      ['최대속도 1.42x', '추진력 +32%', '고속 돌파 강화'],
+      ['최대속도 1.65x', '추진력 +55%', '★115+ 쿨 초기화']
+    ]
+  },
+  {
+    id: 'bungee_web', tag: '변조', name: '고탄성 번지줄', col: '#ffe55c',
+    levels: [
+      ['상승반동 1.22x', '줄길이 +12% 고정', '고공 도약 입문'],
+      ['상승반동 1.45x', '퍼펙트 유예+0.06s', '고공 아크 강화'],
+      ['상승반동 1.72x', '★퍼펙트 추진+35%', '★플립 무적 0.4s']
+    ]
+  },
 
-  // ② 폭발 기믹 (집자마자 화면이 터지는 핵심 기믹)
-  { id: 'chain_pinball', tag: '기믹', name: '연쇄 핀볼',     col: '#ff5cf4', desc: ['적중시 자동연쇄', '2/3/5회 튕김', '가속+체공유지'] },
-  { id: 'swing_aura',    tag: '기믹', name: '전격 오라',     col: '#54f8ff', desc: ['스윙·고속시 전개', '광역 감전+보정', '스웜 자동학살'] },
-  { id: 'volt_web',      tag: '기믹', name: '고압 거미줄',   col: '#ffe55c', desc: ['거미줄 주변 넓은', '고압 전기 아크', '스윙으로 베기'] },
-  { id: 'domino_boom',   tag: '기믹', name: '도미노 폭발',   col: '#ff9436', desc: ['적 처치시 광역', '2차 연쇄폭발', '편대 일괄폭파'] },
+  // ② 핵심 기믹 (4종 — 발동 트리거가 서로 다른 핵심 플레이 엔진)
+  {
+    id: 'swing_aura', tag: '기믹', name: '전격 오라', col: '#54f8ff',
+    levels: [
+      ['속도 65+ 감전', '반경 42m 주행타격', '스웜 2배 즉사청소'],
+      ['속도 58+ 반경 58m', '오라 내 탄막 소거', '킬 시 전방 +10가속'],
+      ['속도 52+ 반경 75m', '★95+ 번개 2연쇄', '★노-STRIKE 폭주']
+    ]
+  },
+  {
+    id: 'lasso_swing', tag: '기믹', name: '올가미 스윙', col: '#a78bfa',
+    levels: [
+      ['스윙 중 4명 포획', '적당 중력 +8%↑', 'STRIKE 일괄기폭'],
+      ['최대 6명/반경46m', '기폭 피해 대폭↑', '포획당 본타 +12%'],
+      ['최대 8명/반경58m', '★4명+ 치명+1.5x폭발', '★기폭 후 안전도약']
+    ]
+  },
+  {
+    id: 'chain_pinball', tag: '기믹', name: '연쇄 핀볼', col: '#ff5cf4',
+    levels: [
+      ['적중시 자동 1연쇄', '탐색 반경 95m', '연쇄 피해 36'],
+      ['자동 3연쇄/120m', '연쇄 피해 52', '체공 스택 유지'],
+      ['자동 5연쇄/150m', '연쇄 피해 70', '★종료후 쿨0+가속']
+    ]
+  },
+  {
+    id: 'domino_boom', tag: '기믹', name: '도미노 폭발', col: '#ff9436',
+    levels: [
+      ['처치시 42m 폭발', '피해 24 / 2연쇄', '스웜 편대 연쇄'],
+      ['반경 60m 폭발', '피해 44 / 4연쇄', '광역 연쇄 폭파'],
+      ['반경 80m / 6연쇄', '기본 피해 70', '★연쇄마다 +20%증폭']
+    ]
+  },
 
-  // ③ 물리 변환 & 규칙 역전 (범용 화력 엔진 ↔ 단점 역전 스위치)
-  { id: 'elastic',       tag: '역전', name: '탄성 반발',     col: '#4ade80', desc: ['벽 반사 0.9~1.1x', '1/2/3회 + 충격파', '타격·퍼펙트 충전'] },
-  { id: 'cloud_hook',    tag: '역전', name: '구름 앵커',     col: '#b8e4ff', desc: ['상공 구름스윙', '160m+ 치명타', '성층권 제압'] },
-  { id: 'vacuum',        tag: '역전', name: '진공 활공',     col: '#54f8ff', desc: ['공기저항 0%', '오라 상시유지', '공중감속 불가'] },
-  { id: 'fall_mom',      tag: '변환', name: '낙하 운동량',   col: '#ff9436', desc: ['하강속도 비례', 'STRIKE 폭증', 'C1 보스원샷'] },
-  { id: 'air_heat',      tag: '변환', name: '체공 예열',     col: '#ffe55c', desc: ['체공 1초당', '피해 +35%', '폭발범위 확대'] },
-  { id: 'fric_heat',     tag: '변환', name: '마찰 과열',     col: '#e82848', desc: ['벽·바닥 스침', '가속+화염파동', '근접 화력↑'] }
+  // ③ 규칙 역전 (2종 — 물리 제약을 무기로 반전)
+  {
+    id: 'elastic', tag: '역전', name: '탄성 반발', col: '#4ade80',
+    levels: [
+      ['벽 반사 0.9x/1회', '충격파 44m (20)', '타격·퍼펙트 충전'],
+      ['벽 반사 1.0x/2회', '충격파 58m (36)', '연속 벽튕김 방어'],
+      ['벽 반사 1.15x/3회', '충격파 76m (56)', '★반사후 2.5s 치명']
+    ]
+  },
+  {
+    id: 'vacuum', tag: '역전', name: '진공 활공', col: '#54f8ff',
+    levels: [
+      ['공기저항 50% 감소', '고속 감쇠 절반화', '속도 유지 입문'],
+      ['공기저항 0% 제거', '초과속 감쇠 제거', '공중 감속 불가'],
+      ['공기저항 0% 유지', '★70+ 비행 자동가속', '★전격 오라 상시']
+    ]
+  },
+
+  // ④ 물리 변환 (4종 — 서로 다른 물리/전투 변수를 화력으로 변환)
+  {
+    id: 'strike_rush', tag: '변환', name: '연속 돌격', col: '#38bdf8',
+    levels: [
+      ['2.8s 연타 +15%(4x)', '타격후 속도85%보존', '핀볼 연쇄도 누적'],
+      ['연타당 +25% (6x)', '속도 95% 보존', '연타중 광각 락온'],
+      ['연타당 +35% (8x)', '★속도 105% 가속', '★쿨 절반+4x 치명']
+    ]
+  },
+  {
+    id: 'fall_mom', tag: '변환', name: '낙하 운동량', col: '#ff9436',
+    levels: [
+      ['하강비례 최대+45%', '하강 80+ 치명타', '급강하 화력 변환'],
+      ['하강비례 최대+85%', '하강기억 감쇠 절반', 'SLAM 원샷 특화'],
+      ['하강비례 최대+140%', '★적중후 기억50%유지', '★60m 낙하 충격파']
+    ]
+  },
+  {
+    id: 'air_heat', tag: '변환', name: '체공 예열', col: '#ffe55c',
+    levels: [
+      ['체공 초당 +15%', '최대 4초(단일극딜)', '적중시 예열 소모'],
+      ['체공 초당 +25%', '최대 5초 (+125%)', '엘리트 단일 폭딜'],
+      ['체공 초당 +35%', '최대 6초 (+210%)', '★풀예열치명+50%유지']
+    ]
+  },
+  {
+    id: 'fric_heat', tag: '변환', name: '마찰 과열', col: '#e82848',
+    levels: [
+      ['스침 가속 +18%/s', '충격파 42m(0.55x)', '저공 근접 화력'],
+      ['스침 가속 +32%/s', '과열 축적 +40%', '충격파 62m(0.75x)'],
+      ['스침 가속 +50%/s', '충격파 84m(1.0x)', '★과열70%+ 화염틱']
+    ]
+  }
 ];
 
 // =========================================================================
-// 증강 보유 상태 및 실시간 물리·기믹 시너지 변수
+// 증강 보유 상태 및 실시간 물리·기믹 시너지 변수 (Invariants 유지)
 // =========================================================================
-let augLevels = {};          // 보유 중인 증강 레벨 (예: { elastic: 1, swing_aura: 2 })
+let augLevels = {};          // 보유 중인 증강 레벨 (최대 MAX_AUG_SLOTS종)
 let augmentDraftOpen = false;
 let draftChoices = [];       // 현재 화면에 뜬 선택지 카드 최대 3장
 let draftCursor = 1;         // 선택 포커스 인덱스 (0, 1, 2)
@@ -55,6 +150,11 @@ let peakFallSpeed = 0.0;     // 낙하 운동량: 직전 최대 하강 속도 (-
 let frictionCharge = 0.0;    // 마찰 과열: 벽/바닥 스침 누적치 (0 ~ 1.5)
 let perfectBuffTimer = 0.0;  // PERFECT RELEASE 후 단기 화력 보너스
 let elasticChargesLeft = 0;  // 탄성 반발: 남은 벽면 반사 충전량 (0 ~ 레벨 최대치)
+let elasticCritTimer = 0.0;  // 탄성 반발 Lv.3: 벽 반사 직후 2.5초 치명타 버프
+let strikeRushStack = 0;     // 연속 돌격: 수동 STRIKE + 핀볼 연쇄 누적 스택
+let strikeRushTimer = 0.0;   // 연속 돌격: 스택 유지 시간 (2.8s)
+let lassoTargets = [];       // 올가미 스윙: 현재 거미줄에 포획된 적 배열
+let fricFireTickTimer = 0.0; // 마찰 과열 Lv.3: 과열 70%+ 지속 화염 틱 타이머
 
 // 초경량 PC-98 도트 이펙트 배열 (ESP32-S3 친화적 선분/원형 기반)
 let shockwaves = [];         // { x, y, z, r, maxR, life, maxLife, col }
@@ -70,6 +170,15 @@ function getLv(id) {
   return augLevels[id];
 }
 
+// 현재 보유 중인 증강 종류 수 반환 (0 ~ MAX_AUG_SLOTS)
+function getOwnedAugmentCount() {
+  let cnt = 0;
+  for (let i = 0; i < AUGMENTS.length; i++) {
+    if (getLv(AUGMENTS[i].id) > 0) cnt++;
+  }
+  return cnt;
+}
+
 // 탄성 반발 레벨별 최대 충전량 (Lv.1: 1회 / Lv.2: 2회 / Lv.3: 3회)
 function getElasticMaxCharges() {
   const lv = getLv('elastic');
@@ -77,13 +186,22 @@ function getElasticMaxCharges() {
   return Math.min(MAX_AUG_LEVEL, lv);
 }
 
-// 탄성 반발 레벨별 벽면 반사 속도 배율 (Lv.1: 0.9x / Lv.2: 1.0x / Lv.3: 1.1x)
+// 탄성 반발 레벨별 벽면 반사 속도 배율 (Lv.1: 0.9x / Lv.2: 1.0x / Lv.3: 1.15x)
 function getElasticBounceMult() {
   const lv = getLv('elastic');
   if (lv <= 0) return 0.0;
   if (lv === 1) return 0.9;
   if (lv === 2) return 1.0;
-  return 1.1;
+  return 1.15;
+}
+
+// 탄성 반발 레벨별 반사 충격파 사양
+function getElasticShockSpec() {
+  const lv = getLv('elastic');
+  if (lv <= 0) return null;
+  if (lv === 1) return { radius: 44.0, dmg: 20 };
+  if (lv === 2) return { radius: 58.0, dmg: 36 };
+  return { radius: 76.0, dmg: 56 };
 }
 
 function refillElasticCharges() {
@@ -93,21 +211,99 @@ function refillElasticCharges() {
   return recharged;
 }
 
-// 연쇄 핀볼 레벨별 자동 튕김 횟수 (Lv.1: 2회 / Lv.2: 3회 / Lv.3: 5회)
-function getChainBounceCount() {
-  const lv = getLv('chain_pinball');
-  if (lv <= 0) return 0;
-  if (lv === 1) return 2;
-  if (lv === 2) return 3;
-  return 5;
+// 진공 활공 레벨별 공기저항 계수 (Lv.0: 1.0 / Lv.1: 0.5 / Lv.2~3: 0.0)
+function getVacuumDragFactor() {
+  const lv = getLv('vacuum');
+  if (lv <= 0) return 1.0;
+  if (lv === 1) return 0.5;
+  return 0.0;
 }
 
-// 전격 오라 활성화 판정 공용 함수 (스윙 중에는 34+ 속도만 되어도 즉시 전개!)
+// 연쇄 핀볼 레벨별 사양
+function getChainSpec() {
+  const lv = getLv('chain_pinball');
+  if (lv <= 0) return null;
+  if (lv === 1) return { bounces: 1, radius: 95.0, dmg: 36.0, keepAir: false, endBonus: false };
+  if (lv === 2) return { bounces: 3, radius: 120.0, dmg: 52.0, keepAir: true, endBonus: false };
+  return { bounces: 5, radius: 150.0, dmg: 70.0, keepAir: true, endBonus: true };
+}
+
+// 하위 호환: 연쇄 핀볼 레벨별 자동 튕김 횟수 (Lv.1: 1회 / Lv.2: 3회 / Lv.3: 5회)
+function getChainBounceCount() {
+  const spec = getChainSpec();
+  return spec ? spec.bounces : 0;
+}
+
+// 도미노 폭발 레벨별 사양
+function getDominoSpec() {
+  const lv = getLv('domino_boom');
+  if (lv <= 0) return null;
+  if (lv === 1) return { radius: 42.0, dmg: 24, maxDepth: 2, depthAmp: 0.0 };
+  if (lv === 2) return { radius: 60.0, dmg: 44, maxDepth: 4, depthAmp: 0.0 };
+  return { radius: 80.0, dmg: 70, maxDepth: 6, depthAmp: 0.20 };
+}
+
+// 전격 오라 레벨별 고속 주행 사양
+function getSwingAuraSpec() {
+  const lv = getLv('swing_aura');
+  if (lv <= 0) return null;
+  if (lv === 1) return { minSpd: 65.0, radius: 42.0, dmg: 16, tick: 0.25, clearProj: false, killBoost: 0.0, chainArc: false };
+  if (lv === 2) return { minSpd: 58.0, radius: 58.0, dmg: 26, tick: 0.21, clearProj: true, killBoost: 10.0, chainArc: false };
+  return { minSpd: 52.0, radius: 75.0, dmg: 38, tick: 0.17, clearProj: true, killBoost: 12.0, chainArc: true };
+}
+
+// 전격 오라 활성화 판정 공용 함수 (진공 활공 Lv.3 시 상시 전개!)
 function isSwingAuraActive(totalSpeed, swingingNow) {
-  if (getLv('swing_aura') <= 0) return false;
-  if (totalSpeed >= 48.0) return true;
-  if (swingingNow && totalSpeed >= 34.0) return true;
-  return false;
+  const spec = getSwingAuraSpec();
+  if (!spec) return false;
+  if (getLv('vacuum') >= 3) return true;
+  const reqSpd = swingingNow ? (spec.minSpd - 6.0) : spec.minSpd;
+  return totalSpeed >= reqSpd;
+}
+
+// 올가미 스윙 레벨별 포획/기폭 사양
+function getLassoSpec() {
+  const lv = getLv('lasso_swing');
+  if (lv <= 0) return null;
+  if (lv === 1) return { maxTied: 4, radius: 36.0, detonatePer: 22, hitMultPer: 0.0, awakenCount: 99 };
+  if (lv === 2) return { maxTied: 6, radius: 46.0, detonatePer: 34, hitMultPer: 0.12, awakenCount: 99 };
+  return { maxTied: 8, radius: 58.0, detonatePer: 48, hitMultPer: 0.16, awakenCount: 4 };
+}
+
+// 연속 돌격 레벨별 연타/속도보존 사양
+function getStrikeRushSpec() {
+  const lv = getLv('strike_rush');
+  if (lv <= 0) return null;
+  if (lv === 1) return { maxStack: 4, dmgPerStack: 0.15, keepSpdRatio: 0.85, cdMult: 1.0, critAt: 99 };
+  if (lv === 2) return { maxStack: 6, dmgPerStack: 0.25, keepSpdRatio: 0.95, cdMult: 0.85, critAt: 99 };
+  return { maxStack: 8, dmgPerStack: 0.35, keepSpdRatio: 1.05, cdMult: 0.50, critAt: 4 };
+}
+
+// 체공 예열 레벨별 단일 극딜 사양 (광역 충격파 제거)
+function getAirHeatSpec() {
+  const lv = getLv('air_heat');
+  if (lv <= 0) return null;
+  if (lv === 1) return { perSec: 0.15, maxSec: 4.0, keepRatio: 0.0, fullCrit: false };
+  if (lv === 2) return { perSec: 0.25, maxSec: 5.0, keepRatio: 0.0, fullCrit: false };
+  return { perSec: 0.35, maxSec: 6.0, keepRatio: 0.5, fullCrit: true };
+}
+
+// 낙하 운동량 레벨별 사양
+function getFallMomSpec() {
+  const lv = getLv('fall_mom');
+  if (lv <= 0) return null;
+  if (lv === 1) return { maxBonus: 0.45, decayRate: 45.0, keepRatio: 0.0, shockR: 0.0 };
+  if (lv === 2) return { maxBonus: 0.85, decayRate: 22.0, keepRatio: 0.0, shockR: 0.0 };
+  return { maxBonus: 1.40, decayRate: 22.0, keepRatio: 0.5, shockR: 60.0 };
+}
+
+// 마찰 과열 레벨별 사양
+function getFricHeatSpec() {
+  const lv = getLv('fric_heat');
+  if (lv <= 0) return null;
+  if (lv === 1) return { boostRate: 0.18, chargeRate: 0.95, shockR: 42.0, shockDmgRatio: 0.55, fireTick: false };
+  if (lv === 2) return { boostRate: 0.32, chargeRate: 1.33, shockR: 62.0, shockDmgRatio: 0.75, fireTick: false };
+  return { boostRate: 0.50, chargeRate: 1.50, shockR: 84.0, shockDmgRatio: 1.00, fireTick: true };
 }
 
 // 레벨별 필요 경험치 (초반 실력 플레이로 1웨이브 내 빠른 성장 가속)
@@ -150,6 +346,11 @@ function resetAugments() {
   frictionCharge = 0.0;
   perfectBuffTimer = 0.0;
   elasticChargesLeft = 0;
+  elasticCritTimer = 0.0;
+  strikeRushStack = 0;
+  strikeRushTimer = 0.0;
+  lassoTargets = [];
+  fricFireTickTimer = 0.0;
 
   shockwaves = [];
   lightningBolts = [];
@@ -159,7 +360,7 @@ function resetAugments() {
 
 // =========================================================================
 // 중앙 스탯 계산기: 보유 증강들을 바탕으로 최종 물리/전투 배율 계산
-// (레벨업 시 단점은 1레벨 고정, 장점 수치만 강화)
+// (단점은 Lv.1 기준 고정, 장점·각성은 Lv.1 -> Lv.2 -> Lv.3 단계별 강화)
 // =========================================================================
 function getAugStats() {
   let gravityMult   = 1.0; // 중력 배율
@@ -171,35 +372,37 @@ function getAugStats() {
   let bungeeBounce  = 1.0; // 스윙 상승 반동 배율
   let baseDmgMult   = 1.0; // 기본 STRIKE 피해 배율
 
-  // [초중력 슈트]: 중력 1.55배 고정, 기본 STRIKE 피해 대폭 증가
+  // [초중력 슈트]: 중력 1.55x 고정, 기본 STRIKE 피해 +20% / +45% / +80%
   const lvHeavy = getLv('heavy_suit');
   if (lvHeavy > 0) {
-    gravityMult = gravityMult * 1.55;
-    baseDmgMult = baseDmgMult * (1.20 + lvHeavy * 0.25);
+    gravityMult *= 1.55;
+    baseDmgMult *= (lvHeavy === 1 ? 1.20 : (lvHeavy === 2 ? 1.45 : 1.80));
   }
 
-  // [달의 인력]: 중력 0.55배 고정, 선회력·락온 범위 확대, 추진력 소폭 감소
-  const lvMoon = getLv('moon_pull');
-  if (lvMoon > 0) {
-    gravityMult   = gravityMult * 0.55;
-    turnMult      = turnMult * (1.30 + lvMoon * 0.15);
-    lockRangeMult = lockRangeMult * (1.30 + lvMoon * 0.15);
-    lockDotBonus  = lockDotBonus + (0.08 + lvMoon * 0.04);
-    swingPushMult = swingPushMult * 0.85;
-  }
-
-  // [오버드라이브]: 최대 속도 및 추진력 대폭 증가, 선회력 0.74배 고정 둔화
+  // [오버드라이브]: 최대 속도 1.22x / 1.42x / 1.65x, 추진력 +15% / +32% / +55%, 선회력 0.74x 고정
   const lvOver = getLv('overdrive');
   if (lvOver > 0) {
-    maxSpeedMult  = maxSpeedMult * (1.35 + lvOver * 0.15);
-    swingPushMult = swingPushMult * (1.23 + lvOver * 0.12);
-    turnMult      = turnMult * 0.74;
+    maxSpeedMult  *= (lvOver === 1 ? 1.22 : (lvOver === 2 ? 1.42 : 1.65));
+    swingPushMult *= (lvOver === 1 ? 1.15 : (lvOver === 2 ? 1.32 : 1.55));
+    turnMult      *= 0.74;
   }
 
-  // [고탄성 번지줄]: 스윙 상승 반동 강화
+  // [고탄성 번지줄]: 스윙 상승 반동 1.22x / 1.45x / 1.72x
   const lvBung = getLv('bungee_web');
   if (lvBung > 0) {
-    bungeeBounce = bungeeBounce * (1.30 + lvBung * 0.15);
+    bungeeBounce *= (lvBung === 1 ? 1.22 : (lvBung === 2 ? 1.45 : 1.72));
+  }
+
+  // [연속 돌격] Lv.2+: 연타 유지 중 광각 락온 보정 (방향 꺾어 다음 타겟 연계 지원)
+  const lvRush = getLv('strike_rush');
+  if (lvRush >= 2 && strikeRushStack > 0 && strikeRushTimer > 0) {
+    lockRangeMult *= 1.25;
+    lockDotBonus  += 0.14;
+  }
+
+  // [올가미 스윙]: 포획된 적 1명당 유효 중력 +8% (무게 리스크 -> 급강하/SLAM 시너지)
+  if (lassoTargets.length > 0) {
+    gravityMult *= (1.0 + lassoTargets.length * 0.08);
   }
 
   return {
@@ -215,9 +418,12 @@ function getAugStats() {
 }
 
 // =========================================================================
-// 3지선다 드래프트 로직
+// 4슬롯 상한 기반 3지선다 드래프트 로직
 // =========================================================================
 function openAugmentDraft() {
+  const ownedCount = getOwnedAugmentCount();
+  const slotsFull = ownedCount >= MAX_AUG_SLOTS;
+
   const available = [];
   const ownedUpgradable = [];
   const gimmickPool = [];
@@ -225,17 +431,19 @@ function openAugmentDraft() {
   for (let i = 0; i < AUGMENTS.length; i++) {
     const card = AUGMENTS[i];
     const lv = getLv(card.id);
-    if (lv < MAX_AUG_LEVEL) {
-      available.push(card);
-      if (lv > 0) ownedUpgradable.push(card);
-      if (card.tag === '기믹') gimmickPool.push(card);
-    }
+    if (lv >= MAX_AUG_LEVEL) continue;
+    if (slotsFull && lv === 0) continue; // 4슬롯 만충 시 보유 미완성 증강만 출현
+
+    available.push(card);
+    if (lv > 0) ownedUpgradable.push(card);
+    if (card.tag === '기믹') gimmickPool.push(card);
   }
 
   if (available.length === 0) {
     hp = Math.min(MAX_HP, hp + 30);
+    if (typeof score === 'number') score += 1000;
     pendingLevelUps = Math.max(0, pendingLevelUps - 1);
-    addPopup('ALL AUGMENTS MAX! +30HP', PAL.GOLD, 3);
+    addPopup('BUILD MAX!! +30HP +1000', PAL.GOLD, 3);
     return;
   }
 
@@ -252,7 +460,7 @@ function openAugmentDraft() {
 
   const picked = [];
 
-  // 첫 번째 증강 선택지에는 반드시 기믹 카드 1장 이상 보장(초반부터 터지는 맛!)
+  // 첫 번째 선택에는 핵심 기믹 카드 1장 이상 보장(초반부터 빌드 방향성 제시)
   if (totalAugmentsPicked === 0 && gimmickPool.length > 0) {
     const gShuf = shuffle(gimmickPool);
     picked.push(gShuf[0]);
@@ -271,7 +479,7 @@ function openAugmentDraft() {
   draftChoices = shuffle(picked);
   draftCursor = draftChoices.length >= 2 ? 1 : 0;
   draftJoyLock = false;
-  draftLockTimer = 0.65; // 창이 열린 직후 0.65초간 실수 확정 방지
+  draftLockTimer = 0.65; // 창이 열린 직후 0.65초간 실수 확정 방지 (Invariant 유지)
   augmentDraftOpen = true;
 }
 
@@ -301,11 +509,12 @@ function confirmAugment(idx) {
     refillElasticCharges();
   }
 
-  addPopup(picked.name + ' Lv.' + newLv + '!', picked.col, 3);
+  const popSuffix = newLv === MAX_AUG_LEVEL ? ' ★MAX!!' : (' Lv.' + newLv + '!');
+  addPopup(picked.name + popSuffix, newLv === MAX_AUG_LEVEL ? PAL.GOLD : picked.col, 3);
 }
 
 // =========================================================================
-// 320x170 LCD용 PC-98 3지선다 카드 선택 UI 렌더링 (고대비 한글 가독성 강화)
+// 320x170 LCD용 PC-98 3지선다 카드 선택 UI (목표 레벨별 동적 설명 & 4슬롯 표시)
 // =========================================================================
 function drawAugmentDraftUI(drawPC98Box) {
   const KR_FONT = '"Malgun Gothic", "Apple SD Gothic Neo", "Noto Sans KR", sans-serif';
@@ -313,12 +522,17 @@ function drawAugmentDraftUI(drawPC98Box) {
   ctx.fillStyle = 'rgba(6, 10, 24, 0.88)';
   ctx.fillRect(0, 0, LCD_W, LCD_H);
 
+  const ownedCount = getOwnedAugmentCount();
+  const slotsFull = ownedCount >= MAX_AUG_SLOTS;
+
   ctx.textAlign = 'center';
-  ctx.font = 'bold 11px ' + KR_FONT;
-  const headerTxt = 'LV.' + playerLevel + ' 성장! 증강 선택 (W' + wave + ')';
+  ctx.font = 'bold 10.5px ' + KR_FONT;
+  const headerTxt = slotsFull
+    ? ('LV.' + playerLevel + ' 강화! SLOTS ' + ownedCount + '/' + MAX_AUG_SLOTS + ' (만충)')
+    : ('LV.' + playerLevel + ' 성장! SLOTS ' + ownedCount + '/' + MAX_AUG_SLOTS + ' (W' + wave + ')');
   ctx.fillStyle = '#000000';
   ctx.fillText(headerTxt, LCD_W * 0.5 + 1, 15);
-  ctx.fillStyle = PAL.GOLD;
+  ctx.fillStyle = slotsFull ? PAL.NEON_CYAN : PAL.GOLD;
   ctx.fillText(headerTxt, LCD_W * 0.5, 14);
 
   const count = draftChoices.length;
@@ -334,7 +548,12 @@ function drawAugmentDraftUI(drawPC98Box) {
     const x = startX + i * (cardW + gap);
     const y = selected ? 20 : 24;
 
-    drawPC98Box(x, y, cardW, cardH, selected ? PAL.GOLD : card.col);
+    const curLv = getLv(card.id);
+    const nextLv = Math.min(MAX_AUG_LEVEL, curLv + 1);
+    const isMaxUp = (nextLv === MAX_AUG_LEVEL);
+    const borderCol = selected ? PAL.GOLD : (isMaxUp ? PAL.GOLD : card.col);
+
+    drawPC98Box(x, y, cardW, cardH, borderCol);
     ctx.fillStyle = selected ? '#18244a' : '#0f162e';
     ctx.fillRect(x + 2, y + 2, cardW - 4, cardH - 4);
     if (selected) {
@@ -343,30 +562,32 @@ function drawAugmentDraftUI(drawPC98Box) {
       ctx.strokeRect(x + 2.5, y + 2.5, cardW - 5, cardH - 5);
     }
 
-    const curLv = getLv(card.id);
-    const lvText = curLv === 0 ? 'NEW' : ('Lv.' + curLv + '→' + (curLv + 1));
-    ctx.fillStyle = card.col;
+    const lvText = curLv === 0 ? 'NEW Lv.1' : (isMaxUp ? '★Lv.3 MAX' : ('Lv.' + curLv + '→' + nextLv));
+    ctx.fillStyle = isMaxUp ? PAL.GOLD : card.col;
     ctx.fillRect(x + 3, y + 3, cardW - 6, 15);
-    ctx.font = 'bold 9.5px ' + KR_FONT;
+    ctx.font = 'bold 9px ' + KR_FONT;
     ctx.fillStyle = '#0b1024';
     ctx.fillText('[' + card.tag + '] ' + lvText, x + cardW * 0.5, y + 14);
 
-    ctx.font = 'bold 12px ' + KR_FONT;
+    ctx.font = 'bold 11.5px ' + KR_FONT;
     ctx.fillStyle = '#000000';
     ctx.fillText(card.name, x + cardW * 0.5 + 1, y + 36);
-    ctx.fillStyle = selected ? PAL.GOLD : '#ffffff';
+    ctx.fillStyle = (selected || isMaxUp) ? PAL.GOLD : '#ffffff';
     ctx.fillText(card.name, x + cardW * 0.5, y + 35);
 
-    ctx.fillStyle = selected ? PAL.GOLD : '#384b7a';
+    ctx.fillStyle = (selected || isMaxUp) ? PAL.GOLD : '#384b7a';
     ctx.fillRect(x + 7, y + 41, cardW - 14, 1);
 
-    ctx.font = 'bold 10px ' + KR_FONT;
-    for (let li = 0; li < card.desc.length; li++) {
+    const descLines = card.levels[nextLv - 1] || card.levels[0];
+    ctx.font = 'bold 9.5px ' + KR_FONT;
+    for (let li = 0; li < descLines.length; li++) {
+      const lineTxt = descLines[li];
+      const isAwakenLine = lineTxt.charAt(0) === '★';
       const ly = y + 58 + li * 16;
       ctx.fillStyle = '#000000';
-      ctx.fillText(card.desc[li], x + cardW * 0.5 + 1, ly + 1);
-      ctx.fillStyle = selected ? '#ffffff' : '#dbeafe';
-      ctx.fillText(card.desc[li], x + cardW * 0.5, ly);
+      ctx.fillText(lineTxt, x + cardW * 0.5 + 1, ly + 1);
+      ctx.fillStyle = isAwakenLine ? PAL.GOLD : (selected ? '#ffffff' : '#dbeafe');
+      ctx.fillText(lineTxt, x + cardW * 0.5, ly);
     }
 
     if (selected) {
@@ -401,7 +622,7 @@ function drawAugmentDraftUI(drawPC98Box) {
 }
 
 // =========================================================================
-// 화면 좌측 하단: 보유 증강 배지 & 실시간 스택(탄성 횟수/오라/체공/마찰) 표시
+// 화면 좌측 하단: 고정 4슬롯 프레임 & 실시간 스택(탄성/오라/올가미/연타/체공/마찰)
 // =========================================================================
 function drawActiveAugmentsHUD(totalSpeed, swingingNow) {
   const KR_FONT = '"Malgun Gothic", "Apple SD Gothic Neo", "Noto Sans KR", sans-serif';
@@ -410,15 +631,15 @@ function drawActiveAugmentsHUD(totalSpeed, swingingNow) {
     const lv = getLv(AUGMENTS[i].id);
     if (lv > 0) owned.push({ card: AUGMENTS[i], lv: lv });
   }
-  if (owned.length === 0) return;
 
   let infoY = LCD_H - 22;
   ctx.font = 'bold 9px Consolas, monospace';
 
-  // 탄성 반발 남은 충전량 표시 (320x170 HUD 4x4 도트 1~3개)
+  // 탄성 반발 남은 충전량 표시 (320x170 HUD 4x4 도트 1~3개 + Lv.3 치명타 버프 점멸)
   const maxElastic = getElasticMaxCharges();
   if (maxElastic > 0) {
     const active = elasticChargesLeft > 0;
+    const critOn = elasticCritTimer > 0;
     const dotSize = 4;
     const dotGap = 2;
     const dotStartX = 27;
@@ -429,17 +650,17 @@ function drawActiveAugmentsHUD(totalSpeed, swingingNow) {
 
     ctx.fillStyle = '#0c1228';
     ctx.fillRect(boxX, boxY, boxW, boxH);
-    ctx.strokeStyle = active ? PAL.EMERALD : '#475569';
+    ctx.strokeStyle = critOn ? PAL.GOLD : (active ? PAL.EMERALD : '#475569');
     ctx.lineWidth = 1;
     ctx.strokeRect(boxX + 0.5, boxY + 0.5, boxW - 1, boxH - 1);
-    ctx.fillStyle = active ? PAL.EMERALD : '#94a3b8';
+    ctx.fillStyle = critOn ? PAL.GOLD : (active ? PAL.EMERALD : '#94a3b8');
     ctx.fillText('BNC', boxX + 3, infoY);
 
     const dotY = boxY + 3;
     for (let i = 0; i < maxElastic; i++) {
       const dotX = dotStartX + i * (dotSize + dotGap);
       if (i < elasticChargesLeft) {
-        ctx.fillStyle = PAL.EMERALD;
+        ctx.fillStyle = critOn ? PAL.GOLD : PAL.EMERALD;
         ctx.fillRect(dotX, dotY, dotSize, dotSize);
         ctx.fillStyle = '#ffffff';
         ctx.fillRect(dotX, dotY, 1, 1);
@@ -453,24 +674,55 @@ function drawActiveAugmentsHUD(totalSpeed, swingingNow) {
     infoY -= 13;
   }
 
-  // 전격 오라 활성화 표시
-  if (isSwingAuraActive(totalSpeed, swingingNow)) {
+  // 올가미 스윙 포획 수 표시
+  const lassoSpec = getLassoSpec();
+  if (lassoSpec && lassoTargets.length > 0) {
+    const awakened = lassoTargets.length >= lassoSpec.awakenCount;
+    const txt = 'TIED ' + lassoTargets.length + '/' + lassoSpec.maxTied;
     ctx.fillStyle = '#0c1228';
-    ctx.fillRect(4, infoY - 9, 54, 11);
-    ctx.strokeStyle = PAL.NEON_CYAN;
-    ctx.strokeRect(4.5, infoY - 8.5, 53, 10);
-    ctx.fillStyle = PAL.NEON_CYAN;
-    ctx.fillText('AURA ON', 7, infoY);
+    ctx.fillRect(4, infoY - 9, 58, 11);
+    ctx.strokeStyle = awakened ? PAL.GOLD : '#a78bfa';
+    ctx.strokeRect(4.5, infoY - 8.5, 57, 10);
+    ctx.fillStyle = awakened ? PAL.GOLD : '#d8b4fe';
+    ctx.fillText(txt, 7, infoY);
     infoY -= 13;
   }
 
-  if (getLv('air_heat') > 0 && airTimeStack >= 0.3) {
+  // 연속 돌격 스택 표시
+  const rushSpec = getStrikeRushSpec();
+  if (rushSpec && strikeRushStack > 0 && strikeRushTimer > 0) {
+    const isCrit = strikeRushStack >= rushSpec.critAt;
+    const txt = 'RUSH x' + strikeRushStack;
+    ctx.fillStyle = '#0c1228';
+    ctx.fillRect(4, infoY - 9, 56, 11);
+    ctx.strokeStyle = isCrit ? PAL.GOLD : '#38bdf8';
+    ctx.strokeRect(4.5, infoY - 8.5, 55, 10);
+    ctx.fillStyle = isCrit ? PAL.GOLD : '#7dd3fc';
+    ctx.fillText(txt, 7, infoY);
+    infoY -= 13;
+  }
+
+  // 전격 오라 활성화 표시
+  if (isSwingAuraActive(totalSpeed, swingingNow)) {
+    const overcharge = getLv('swing_aura') >= 3 && totalSpeed >= 95.0;
+    ctx.fillStyle = '#0c1228';
+    ctx.fillRect(4, infoY - 9, 58, 11);
+    ctx.strokeStyle = overcharge ? PAL.GOLD : PAL.NEON_CYAN;
+    ctx.strokeRect(4.5, infoY - 8.5, 57, 10);
+    ctx.fillStyle = overcharge ? PAL.GOLD : PAL.NEON_CYAN;
+    ctx.fillText(overcharge ? 'AURA MAX' : 'AURA ON', 7, infoY);
+    infoY -= 13;
+  }
+
+  const airSpec = getAirHeatSpec();
+  if (airSpec && airTimeStack >= 0.3) {
+    const full = airSpec.fullCrit && airTimeStack >= (airSpec.maxSec - 0.5);
     const txt = 'AIR ' + airTimeStack.toFixed(1) + 's';
     ctx.fillStyle = '#0c1228';
     ctx.fillRect(4, infoY - 9, 54, 11);
-    ctx.strokeStyle = PAL.GOLD;
+    ctx.strokeStyle = full ? PAL.ORANGE : PAL.GOLD;
     ctx.strokeRect(4.5, infoY - 8.5, 53, 10);
-    ctx.fillStyle = PAL.GOLD;
+    ctx.fillStyle = full ? '#ffffff' : PAL.GOLD;
     ctx.fillText(txt, 7, infoY);
     infoY -= 13;
   }
@@ -480,28 +732,39 @@ function drawActiveAugmentsHUD(totalSpeed, swingingNow) {
     const txt = 'HEAT ' + pct + '%';
     ctx.fillStyle = '#0c1228';
     ctx.fillRect(4, infoY - 9, 58, 11);
-    ctx.strokeStyle = PAL.CRIMSON;
+    ctx.strokeStyle = (getLv('fric_heat') >= 3 && pct >= 70) ? PAL.GOLD : PAL.CRIMSON;
     ctx.strokeRect(4.5, infoY - 8.5, 57, 10);
-    ctx.fillStyle = '#ff7b93';
+    ctx.fillStyle = (getLv('fric_heat') >= 3 && pct >= 70) ? PAL.GOLD : '#ff7b93';
     ctx.fillText(txt, 7, infoY);
     infoY -= 13;
   }
 
-  // 보유 증강 컬러 칩
-  const chipW = 24;
+  // 고정 4슬롯 프레임 (빈 칸 포함 표시, Lv.3 마스터는 금색 강조)
+  const chipW = 28;
   const chipH = 13;
-  for (let i = 0; i < owned.length; i++) {
+  for (let i = 0; i < MAX_AUG_SLOTS; i++) {
     const x = 4 + i * (chipW + 2);
     const y = LCD_H - 16;
-    if (x + chipW > LCD_W - 18) break;
-    const item = owned[i];
-    ctx.fillStyle = '#0c1228';
-    ctx.fillRect(x, y, chipW, chipH);
-    ctx.strokeStyle = item.card.col;
-    ctx.lineWidth = 1;
-    ctx.strokeRect(x + 0.5, y + 0.5, chipW - 1, chipH - 1);
-    ctx.fillStyle = '#ffffff';
-    ctx.font = 'bold 9px ' + KR_FONT;
-    ctx.fillText(item.card.name.charAt(0) + item.lv, x + 3, y + 10);
+    if (i < owned.length) {
+      const item = owned[i];
+      const isMax = item.lv >= MAX_AUG_LEVEL;
+      ctx.fillStyle = isMax ? '#1f1d38' : '#0c1228';
+      ctx.fillRect(x, y, chipW, chipH);
+      ctx.strokeStyle = isMax ? PAL.GOLD : item.card.col;
+      ctx.lineWidth = 1;
+      ctx.strokeRect(x + 0.5, y + 0.5, chipW - 1, chipH - 1);
+      ctx.fillStyle = isMax ? PAL.GOLD : '#ffffff';
+      ctx.font = 'bold 8.5px ' + KR_FONT;
+      ctx.fillText(item.card.name.charAt(0) + item.lv + (isMax ? '★' : ''), x + 3, y + 10);
+    } else {
+      ctx.fillStyle = 'rgba(12, 18, 40, 0.65)';
+      ctx.fillRect(x, y, chipW, chipH);
+      ctx.strokeStyle = '#334155';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(x + 0.5, y + 0.5, chipW - 1, chipH - 1);
+      ctx.fillStyle = '#475569';
+      ctx.font = 'bold 8px Consolas, monospace';
+      ctx.fillText('·', x + 12, y + 9);
+    }
   }
 }
