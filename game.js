@@ -5,7 +5,7 @@
 // =========================================================================
 // 기본(노증강) 물리 기준값: 기본은 슴슴하고 쾌적하게, 증강으로 폭발적 성장 체감
 const GAME_MAX_ALTITUDE = 650.0;     // 고도 제한 대폭 해제 (335m -> 650m)
-const BASE_GRAVITY = 42.0;           // 여유로운 기본 낙하
+const BASE_GRAVITY = 64.0;           // 묵직한 진자 회전과 리드미컬한 체공시간 기준 중력
 const BASE_AIR_DRAG = 0.11;          // 진공 활공 체감 확대
 const BASE_SWING_MAX_SPD = 108.0;    // 오버드라이브 성장 여지 확보
 const BASE_FREE_MAX_SPD = 68.0;
@@ -1027,7 +1027,7 @@ function onSwingDown() {
   btnSwing.classList.add('pressed');
 
   if (py <= 4.0) {
-    vy = 48.0;
+    vy = 58.0;
     const sinY = Math.sin(camYaw), cosY = Math.cos(camYaw);
     const hSpd = Math.hypot(vx, vz);
     if (hSpd < 26.0) { vx = sinY * 26.0; vz = cosY * 26.0; }
@@ -1060,15 +1060,15 @@ function onSwingUp() {
 
       const swingDepth = Math.max(10.0, peakYBeforeSwing - swingMinY);
       const depthRatio = Math.min(1.0, swingDepth / 75.0);
-      const hSpd = Math.hypot(vx, vz);
       const sinY = Math.sin(camYaw), cosY = Math.cos(camYaw);
 
       if (wasPerfect) {
         hitStopTimer = 0.045;
-        const upwardKick = (26.0 + depthRatio * 22.0 + Math.min(20.0, hSpd * 0.13)) * aug.bungeeBounce;
-        vy = Math.min(135.0 * aug.bungeeBounce, Math.max(vy + upwardKick * 0.65, (44.0 + depthRatio * 26.0) * aug.bungeeBounce));
-        vx += sinY * (24.0 + depthRatio * 20.0);
-        vz += cosY * (24.0 + depthRatio * 20.0);
+        const upwardKick = (12.0 + depthRatio * 8.0) * aug.bungeeBounce;
+        const targetVy = Math.min(84.0 * aug.bungeeBounce, vy + upwardKick);
+        vy = Math.max(vy, targetVy);
+        vx += sinY * (26.0 + depthRatio * 22.0);
+        vz += cosY * (26.0 + depthRatio * 22.0);
         perfectBuffTimer = 3.4;
         if (refillElasticCharges()) {
           spawnSparks(px, py, pz, PAL.EMERALD, 6, 26);
@@ -1085,8 +1085,9 @@ function onSwingUp() {
         spawnSparks(px, py, pz, PAL.NEON_CYAN, 8, 30);
         addPopup('PERFECT!! +' + perfXp + 'XP', PAL.NEON_CYAN, 3);
       } else {
-        const upwardKick = (15.0 + depthRatio * 17.0 + Math.min(15.0, hSpd * 0.10)) * aug.bungeeBounce;
-        vy = Math.min(112.0 * aug.bungeeBounce, Math.max(vy + upwardKick * 0.58, (32.0 + depthRatio * 24.0) * aug.bungeeBounce));
+        const upwardKick = (6.0 + depthRatio * 6.0) * aug.bungeeBounce;
+        const targetVy = Math.min(68.0 * aug.bungeeBounce, vy + upwardKick);
+        vy = Math.max(vy, targetVy);
         vx += sinY * (5.0 + depthRatio * 8.0) * aug.swingPushMult;
         vz += cosY * (5.0 + depthRatio * 8.0) * aug.swingPushMult;
 
@@ -2449,10 +2450,14 @@ function tick(now) {
       vx += rightX * (turnInput * 48.0 * aug.turnMult) * dt;
       vz += rightZ * (turnInput * 48.0 * aug.turnMult) * dt;
 
+      const maxSwingSpd = (BASE_SWING_MAX_SPD + (perfectBuffTimer > 0 ? 22.0 : 0.0)) * aug.maxSpeedMult;
+
       if (forwardInput > 0.15) {
         ropeLen = Math.max(24.0, ropeLen - 32.0 * forwardInput * dt);
-        vx += sinY * forwardInput * (16.0 * aug.swingPushMult) * dt;
-        vz += cosY * forwardInput * (16.0 * aug.swingPushMult) * dt;
+        if (Math.hypot(vx, vy, vz) < maxSwingSpd) {
+          vx += sinY * forwardInput * (16.0 * aug.swingPushMult) * dt;
+          vz += cosY * forwardInput * (16.0 * aug.swingPushMult) * dt;
+        }
       } else if (forwardInput < -0.15) {
         ropeLen = Math.min(ay - SAFE_SKIM_Y, ropeLen - 28.0 * forwardInput * dt);
       }
@@ -2492,14 +2497,21 @@ function tick(now) {
           vz -= radialDot * nz;
         }
 
-        const maxSwingSpd = (BASE_SWING_MAX_SPD + (perfectBuffTimer > 0 ? 22.0 : 0.0)) * aug.maxSpeedMult;
+        const hasVacuum = getLv('vacuum') > 0;
         const speedAfter = Math.hypot(vx, vy, vz);
-        if (speedAfter > 4.0 && speedBefore > speedAfter) {
-          const keep = passedBottom ? 0.94 : 0.88;
-          const targetSpd = Math.min(maxSwingSpd, speedAfter + (speedBefore - speedAfter) * keep);
+        if (speedAfter > 4.0) {
+          let targetSpd = speedAfter;
+          if (speedBefore > speedAfter) {
+            // 직전 속력을 하드캡 없이 접선 방향으로 98.5% 보존
+            targetSpd = speedAfter + (speedBefore - speedAfter) * 0.985;
+          }
+          // 기본 능동 상한(maxSwingSpd) 초과 고속 구간은 강제 급제동 대신 완만한 공력 감쇠
+          if (targetSpd > maxSwingSpd && !hasVacuum) {
+            targetSpd -= (targetSpd - maxSwingSpd) * Math.min(1.0, 0.22 * dt);
+          }
           const sc = targetSpd / speedAfter;
           vx *= sc; vy *= sc; vz *= sc;
-        } else if (speedAfter <= 4.0) {
+        } else {
           vx += sinY * (14.0 * aug.swingPushMult) * dt;
           vz += cosY * (14.0 * aug.swingPushMult) * dt;
         }
@@ -2520,11 +2532,6 @@ function tick(now) {
           }
         }
 
-        if (passedBottom && py < ay + 15.0) {
-          const swingDepth = Math.max(12.0, peakYBeforeSwing - swingMinY);
-          vy += (9.5 + Math.min(24.0, swingDepth * 0.25)) * aug.bungeeBounce * dt;
-        }
-
         const curHSpd = Math.hypot(vx, vz);
         if (curHSpd > 10.0) {
           const velYaw = Math.atan2(vx, vz);
@@ -2533,7 +2540,7 @@ function tick(now) {
           camYaw += yawDiff * 5.2 * dt;
         }
 
-        if (anchorLocalZ < -230.0 || (passedBottom && py >= ay + 54.0 && vy <= 0)) {
+        if (anchorLocalZ < -230.0 || (passedBottom && py >= ay + 12.0 && vy <= 0)) {
           isSwinging = false;
           inPerfectWindow = false;
           doingFlip = true;
@@ -2544,8 +2551,8 @@ function tick(now) {
       inPerfectWindow = false;
 
       const effGrav = BASE_GRAVITY * aug.gravityMult;
-      const fallT = vy < -6.0 ? Math.min(1.0, (-vy - 6.0) / 70.0) : 0.0;
-      const fallGravMult = 1.45 + 0.40 * fallT;
+      const fallT = vy < -4.0 ? Math.min(1.0, (-vy - 4.0) / 70.0) : 0.0;
+      const fallGravMult = 1.40 + 0.35 * fallT;
 
       if (py > 6.5 && forwardInput < -0.25) {
         isGliding = true;
@@ -2553,19 +2560,19 @@ function tick(now) {
         diveCharge = Math.max(0.0, diveCharge - 0.35 * dt);
         vy -= (effGrav * 0.16) * dt;
         if (vy < -9.0) vy += (-9.0 - vy) * 9.0 * dt;
-      } else if (py > 8.0 && vy < -6.0 && forwardInput > 0.25) {
+      } else if (py > 8.0 && vy < -4.0 && forwardInput > 0.25) {
         isGliding = false;
         isDiving = true;
-        vy -= (effGrav * fallGravMult + 38.0 * forwardInput) * dt;
+        vy -= (effGrav * fallGravMult + 42.0 * forwardInput) * dt;
         diveCharge = Math.min(1.0, diveCharge + 0.85 * forwardInput * dt);
       } else {
         isGliding = false;
         isDiving = false;
         diveCharge = Math.max(0.0, diveCharge - 0.28 * dt);
-        if (vy < -6.0) {
+        if (vy < -4.0) {
           vy -= (effGrav * fallGravMult) * dt;
-        } else if (py > 55.0 && vy <= 10.0) {
-          vy -= (effGrav * 0.50) * dt;
+        } else if (py > 45.0 && vy <= 8.0) {
+          vy -= (effGrav * 0.52) * dt;
         } else {
           vy -= effGrav * dt;
         }
