@@ -16,12 +16,14 @@ let px = 0, py = 124, pz = -60, vx = 0, vy = 0, vz = 24, camYaw = 0;
 let isSwinging = false, ax = 0, ay = 0, az = 0, ropeLen = 0, anchorSide = 1, lastAnchorSide = -1;
 let swingTimer = 0, passedBottom = false, peakYBeforeSwing = 124, swingMinY = 124;
 let autoCatchAfterJump = false, groundLaunchTimer = 0;
+let swingReattachCooldown = 0, swingWebShootTimer = 0, isRopeTaut = false;
 let camDist = 15.5, camLagYaw = 0, camPitch = -0.06, camRoll = 0, fovD = 175.0;
 let flipAngle = 0, doingFlip = false;
 let shakeMag = 0;
 
 // Timing, Glide & Manual Strike State
 let inPerfectWindow = false;
+let perfectGraceTimer = 0;
 let hitStopTimer = 0;
 let diveCharge = 0;
 let isDiving = false;
@@ -573,9 +575,10 @@ function resetGame() {
   swingTimer = 0; passedBottom = false;
   peakYBeforeSwing = 124.0; swingMinY = 124.0;
   autoCatchAfterJump = false; groundLaunchTimer = 0;
+  swingReattachCooldown = 0; swingWebShootTimer = 0; isRopeTaut = false;
   camDist = 15.5; camLagYaw = 0.0; camPitch = -0.06; camRoll = 0.0; fovD = 175.0;
   flipAngle = 0.0; doingFlip = false; shakeMag = 0;
-  inPerfectWindow = false; hitStopTimer = 0;
+  inPerfectWindow = false; perfectGraceTimer = 0; hitStopTimer = 0;
   diveCharge = 0; isDiving = false; isGliding = false;
   homingTarget = null;
   clearStrikeState();
@@ -904,25 +907,29 @@ function findWallAnchor(turnInput, fwdInput, bList, cList) {
   let minScore = 9999.0;
   const cosY = Math.cos(camYaw), sinY = Math.sin(camYaw);
   const horizSpd = Math.hypot(vx, vz);
-  const preferSide = Math.abs(turnInput) < 0.15 ? -lastAnchorSide : (turnInput < 0 ? -1 : 1);
+  const hasTurnIntent = Math.abs(turnInput) >= 0.18;
+  const preferSide = !hasTurnIntent ? -lastAnchorSide : (turnInput < 0 ? -1 : 1);
 
   for (const b of bList) {
     const dx = b.bx - px, dz = b.bz - pz;
     const localX = dx * cosY - dz * sinY;
     const localZ = dx * sinY + dz * cosY;
 
-    if (localZ > 44.0 && localZ < 265.0 && Math.abs(localX) > 10.0 && Math.abs(localX) < 195.0) {
-      const altBias = fwdInput > 0.2 ? 125.0 : (fwdInput < -0.2 ? 68.0 : 95.0);
+    if (localZ > 28.0 && localZ < 280.0 && Math.abs(localX) > 6.0 && Math.abs(localX) < 205.0) {
+      // 조이스틱 기본 전진 자세에서도 과도하게 높은 벽을 잡지 않도록 균형 높이 유지 (후진 시에만 낮춤)
+      const altBias = fwdInput < -0.3 ? 68.0 : 95.0;
       const targetWallY = Math.min(b.bh - 6.0, Math.max(py + altBias, 130.0));
-      if (targetWallY <= py + 14.0) continue;
+      if (targetWallY <= py + 8.0) continue;
 
-      const wx = b.bx - (localX > 0 ? b.bw * 0.5 : -b.bw * 0.5);
-      const wz = b.bz - (localZ > 0 ? b.bd * 0.5 : -b.bd * 0.5);
-      const side = localX > 0 ? 1 : -1;
+      // 월드 좌표(dx, dz) 기준으로 플레이어와 마주한 실제 앞쪽 모서리 선택 (시점 회전 시 뒷면 부착 버그 수정)
+      const wx = b.bx - (dx >= 0 ? b.bw * 0.5 : -b.bw * 0.5);
+      const wz = b.bz - (dz >= 0 ? b.bd * 0.5 : -b.bd * 0.5);
+      const cornerLocalX = (wx - px) * cosY - (wz - pz) * sinY;
+      const side = cornerLocalX >= 0 ? 1 : -1;
 
       const idealZ = 95.0 + horizSpd * 0.45;
       let sc = Math.abs(localZ - idealZ) + Math.abs(Math.abs(localX) - 56.0) * 0.48;
-      if (side === preferSide) sc -= 35.0;
+      if (side === preferSide) sc -= hasTurnIntent ? 75.0 : 35.0;
 
       if (sc < minScore) {
         minScore = sc;
@@ -937,10 +944,11 @@ function findWallAnchor(turnInput, fwdInput, bList, cList) {
       const dx = c.x - px, dz = c.z - pz;
       const localX = dx * cosY - dz * sinY;
       const localZ = dx * sinY + dz * cosY;
-      if (localZ > 34.0 && localZ < 285.0 && Math.abs(localX) < 190.0 && c.y > py + 12.0) {
+      if (localZ > 28.0 && localZ < 290.0 && Math.abs(localX) < 200.0 && c.y > py + 8.0) {
         const side = localX >= 0 ? 1 : -1;
         const idealZ = 105.0 + horizSpd * 0.45;
         let sc = Math.abs(localZ - idealZ) + Math.abs(localX) * 0.42 - 20.0;
+        if (hasTurnIntent && side === preferSide) sc -= 45.0;
         if (py > 150.0) sc -= 55.0;
         if (sc < minScore) {
           minScore = sc;
@@ -1012,6 +1020,9 @@ function startWebSwing(bList, cList, fromGroundLaunch = false) {
   swingTimer = 0.0;
   passedBottom = false;
   inPerfectWindow = false;
+  perfectGraceTimer = 0.0;
+  swingWebShootTimer = 0.05;
+  isRopeTaut = false;
   doingFlip = false;
   spawnSparks(ax, ay, az, target.isCloud ? '#b8e4ff' : '#ffffff', 7, 22);
   return true;
@@ -1028,6 +1039,7 @@ function onSwingDown() {
   }
 
   swingHeld = true;
+  swingReattachCooldown = 0;
   btnSwing.classList.add('pressed');
 
   if (py <= 4.0) {
@@ -1053,12 +1065,15 @@ function onSwingUp() {
 
   if (isSwinging) {
     const aug = getAugStats();
-    const wasPerfect = inPerfectWindow;
+    const wasPerfect = inPerfectWindow || perfectGraceTimer > 0;
     isSwinging = false;
     inPerfectWindow = false;
+    perfectGraceTimer = 0;
+    isRopeTaut = false;
+    swingWebShootTimer = 0;
     groundLaunchTimer = 0;
 
-    if (swingTimer > 0.18 && (passedBottom || vy > 8.0)) {
+    if ((swingTimer > 0.18 && (passedBottom || vy > 8.0)) || wasPerfect) {
       swingCombo = Math.min(12, swingCombo + (wasPerfect ? 2 : 1));
       comboTimer = 4.6;
 
@@ -1111,6 +1126,12 @@ function onSwingUp() {
         if (swingDepth > 55) addPopup('BIG ARC +' + pts, PAL.GOLD, 1);
       }
 
+      doingFlip = true;
+      flipAngle = 0.0;
+    } else if (swingTimer > 0.10 && vy > 4.0) {
+      // 짧은 스윙 이탈 시에도 가벼운 도약 보정
+      const microKick = 7.0 * aug.bungeeBounce;
+      vy = Math.max(vy, Math.min(48.0 * aug.bungeeBounce, vy + microKick));
       doingFlip = true;
       flipAngle = 0.0;
     }
@@ -1179,6 +1200,9 @@ function handleBuildingsCollisionAndProximity(bList) {
               camYaw = Math.atan2(vx, vz);
               isSwinging = false;
               inPerfectWindow = false;
+              perfectGraceTimer = 0;
+              isRopeTaut = false;
+              swingReattachCooldown = 0.18;
               clearStrikeState();
               if (getLv('fric_heat') > 0) frictionCharge = Math.min(1.5, frictionCharge + 0.55);
               shakeMag = Math.max(shakeMag, 2.8);
@@ -1194,6 +1218,9 @@ function handleBuildingsCollisionAndProximity(bList) {
             vy *= 0.45;
             isSwinging = false;
             inPerfectWindow = false;
+            perfectGraceTimer = 0;
+            isRopeTaut = false;
+            swingReattachCooldown = 0.18;
             diveCharge = 0;
             clearStrikeState();
             spawnSparks(px, py, pz, PAL.CRIMSON, 12, 34);
@@ -2331,6 +2358,9 @@ function tick(now) {
     if (damageFlash > 0) damageFlash = Math.max(0, damageFlash - dt);
     if (shakeMag > 0) shakeMag = Math.max(0, shakeMag - 12.0 * dt);
     if (perfectBuffTimer > 0) perfectBuffTimer = Math.max(0, perfectBuffTimer - dt);
+    if (swingReattachCooldown > 0) swingReattachCooldown = Math.max(0, swingReattachCooldown - dt);
+    if (swingWebShootTimer > 0) swingWebShootTimer = Math.max(0, swingWebShootTimer - dt);
+    if (perfectGraceTimer > 0) perfectGraceTimer = Math.max(0, perfectGraceTimer - dt);
 
     if (py > 4.0) {
       airTimeStack = Math.min(8.0, airTimeStack + dt);
@@ -2348,6 +2378,8 @@ function tick(now) {
 
     if (autoCatchAfterJump && swingHeld && !isSwinging && py > 13.5) {
       if (startWebSwing(nearbyBuildings, nearbyClouds, true)) autoCatchAfterJump = false;
+    } else if (swingHeld && !isSwinging && !autoCatchAfterJump && strikeMode === 0 && py > 4.0 && swingReattachCooldown <= 0) {
+      startWebSwing(nearbyBuildings, nearbyClouds, false);
     }
 
     const oldPx = px, oldPy = py, oldPz = pz;
@@ -2462,19 +2494,49 @@ function tick(now) {
       const sinY = Math.sin(camYaw), cosY = Math.cos(camYaw);
       const rightX = cosY, rightZ = -sinY;
 
-      vx += rightX * (turnInput * 48.0 * aug.turnMult) * dt;
-      vz += rightZ * (turnInput * 48.0 * aug.turnMult) * dt;
+      // 현재 시점 기준 앵커의 좌/우 위치 실시간 갱신 (모서리 연속 회전 시에도 정확한 방향 판정)
+      const relAnchorX = (ax - px) * cosY - (az - pz) * sinY;
+      const currentAnchorSide = relAnchorX >= 0 ? 1 : -1;
+      anchorSide = currentAnchorSide;
+
+      // 1) 좌우 조향: 수평 속도 벡터 직접 선회(Yaw Carving) + 횡추력 병행 (슬랙 포함 전 구간 즉시 반응)
+      if (Math.abs(turnInput) > 0.01) {
+        const carveAng = turnInput * 1.35 * aug.turnMult * dt;
+        const cA = Math.cos(carveAng), sA = Math.sin(carveAng);
+        const rVx = vx * cA + vz * sA;
+        const rVz = -vx * sA + vz * cA;
+        vx = rVx;
+        vz = rVz;
+
+        vx += rightX * (turnInput * 56.0 * aug.turnMult) * dt;
+        vz += rightZ * (turnInput * 56.0 * aug.turnMult) * dt;
+      }
 
       const maxSwingSpd = (BASE_SWING_MAX_SPD + (perfectBuffTimer > 0 ? 12.0 : 0.0)) * aug.maxSpeedMult;
 
+      // 2) 아날로그 3구간 매핑 (조이스틱 전진 기본 자세 + 모서리 회전 + 벽 회피 양립)
+      const isEvadingOutward = (turnInput * currentAnchorSide) < -0.25;
       if (forwardInput > 0.15) {
-        ropeLen = Math.max(24.0, ropeLen - 32.0 * forwardInput * dt);
+        // 접선(진행) 방향 추진 펌핑 (전진 크루즈 및 모서리 회전 시 속도 유지)
         if (Math.hypot(vx, vy, vz) < maxSwingSpd) {
-          vx += sinY * forwardInput * (16.0 * aug.swingPushMult) * dt;
-          vz += cosY * forwardInput * (16.0 * aug.swingPushMult) * dt;
+          vx += sinY * forwardInput * (22.0 * aug.swingPushMult) * dt;
+          vz += cosY * forwardInput * (22.0 * aug.swingPushMult) * dt;
         }
-      } else if (forwardInput < -0.15) {
-        ropeLen = Math.min(ay - SAFE_SKIM_Y, ropeLen - 28.0 * forwardInput * dt);
+        // 정면 풀 푸시(>0.65) & 좌우 꺾기 적음(|turn|<0.35)일 때만 연속 비례 줄 당기기 (최소 46m 하한으로 벽 빨림 차단)
+        if (forwardInput > 0.65 && Math.abs(turnInput) < 0.35 && ropeLen > 46.0) {
+          const reelIntensity = Math.min(1.0, (forwardInput - 0.65) / 0.35);
+          ropeLen = Math.max(46.0, ropeLen - 20.0 * reelIntensity * dt);
+        }
+      } else if (forwardInput < -0.30) {
+        // 의도적 후진(S): 연속 비례 줄 풀기 (깊은 저공 스윙 / 넓은 회전 반경)
+        const payOutIntensity = Math.min(1.0, (-forwardInput - 0.30) / 0.70);
+        ropeLen = Math.min(ay - SAFE_SKIM_Y, ropeLen + 28.0 * payOutIntensity * dt);
+      }
+
+      // 앵커 반대쪽 강선회(건물 회피): 바깥쪽으로만 줄 여유 부드럽게 완화 (모서리 회전 시에는 반경 고정)
+      if (isEvadingOutward) {
+        const evadeMaxLen = Math.min(230.0, Math.max(ropeLen, ay - SAFE_SKIM_Y));
+        ropeLen = Math.min(evadeMaxLen, ropeLen + 22.0 * Math.abs(turnInput) * dt);
       }
 
       if (groundLaunchTimer > 0) {
@@ -2497,6 +2559,7 @@ function tick(now) {
 
       const dx = px - ax, dy = py - ay, dz = pz - az;
       const curDist = Math.hypot(dx, dy, dz);
+      isRopeTaut = curDist >= ropeLen - 1.5;
 
       if (curDist > ropeLen && curDist > 0.001) {
         const nx = dx / curDist, ny = dy / curDist, nz = dz / curDist;
@@ -2536,7 +2599,11 @@ function tick(now) {
 
         const fwdPast = -anchorLocalZ;
         const arcProgress = fwdPast / Math.max(30.0, ropeLen);
+        const prevPerfect = inPerfectWindow;
         inPerfectWindow = passedBottom && arcProgress >= 0.34 && arcProgress <= 0.88 && vy > 14.0;
+        if (inPerfectWindow || prevPerfect) {
+          perfectGraceTimer = 0.09;
+        }
 
         if (py < 24.0 && py > 4.5) {
           const skimBoost = (1.0 - (py - 4.5) / 19.5) * 24.0 * aug.swingPushMult;
@@ -2546,21 +2613,18 @@ function tick(now) {
             vz += (vz / hNow) * skimBoost * dt;
           }
         }
+      } else {
+        if (inPerfectWindow) perfectGraceTimer = Math.max(perfectGraceTimer, 0.09);
+        inPerfectWindow = false;
+      }
 
-        const curHSpd = Math.hypot(vx, vz);
-        if (curHSpd > 10.0) {
-          const velYaw = Math.atan2(vx, vz);
-          let yawDiff = (velYaw - camYaw + Math.PI) % (2 * Math.PI) - Math.PI;
-          if (yawDiff < -Math.PI) yawDiff += 2 * Math.PI;
-          camYaw += yawDiff * 5.2 * dt;
-        }
-
-        if (anchorLocalZ < -230.0 || (passedBottom && py >= ay + 12.0 && vy <= 0)) {
-          isSwinging = false;
-          inPerfectWindow = false;
-          doingFlip = true;
-          flipAngle = 0.0;
-        }
+      // 슬랙/장력 무관하게 카메라가 속도 방향을 기민하게 추종 (자동 해제 없음: 모서리 연속 회전 지원)
+      const curHSpd = Math.hypot(vx, vz);
+      if (curHSpd > 8.0) {
+        const velYaw = Math.atan2(vx, vz);
+        let yawDiff = (velYaw - camYaw + Math.PI) % (2 * Math.PI) - Math.PI;
+        if (yawDiff < -Math.PI) yawDiff += 2 * Math.PI;
+        camYaw += yawDiff * 8.5 * dt;
       }
     } else {
       inPerfectWindow = false;
@@ -2658,6 +2722,9 @@ function tick(now) {
           vx *= 0.42; vz *= 0.42; vy = 0.0;
           isSwinging = false;
           inPerfectWindow = false;
+          perfectGraceTimer = 0;
+          isRopeTaut = false;
+          swingReattachCooldown = 0.18;
           spawnSparks(px, 1.5, pz, PAL.ORANGE, 10, 26);
           takeDamage(8, 'GROUND SLAM!');
         } else {
@@ -2859,7 +2926,7 @@ function tick(now) {
     btnSwing.classList.add('ready');
     swingBtnLabel.textContent = 'RETRY';
     swingBtnSub.textContent = 'TAP TO START';
-  } else if (isSwinging && inPerfectWindow) {
+  } else if (isSwinging && (inPerfectWindow || perfectGraceTimer > 0)) {
     btnSwing.classList.add('perfect');
     swingBtnLabel.textContent = 'PERFECT!';
     swingBtnSub.textContent = 'RELEASE NOW!';
@@ -2869,7 +2936,7 @@ function tick(now) {
     swingBtnSub.textContent = 'SLINGSHOT';
   } else if (isSwinging) {
     swingBtnLabel.textContent = 'SWINGING';
-    swingBtnSub.textContent = 'W:UP / S:LOW';
+    swingBtnSub.textContent = 'A/D:TURN S:WIDE';
   } else {
     swingBtnLabel.textContent = py <= 4.0 ? 'JUMP+ZIP' : 'SWING';
     swingBtnSub.textContent = py <= 4.0 ? 'HOLD TO SOAR' : (isGliding ? 'GLIDING!' : 'HOLD / JUMP');
@@ -3169,41 +3236,77 @@ function tick(now) {
     const target = findWallAnchor(turnInput, forwardInput, nearbyBuildings, nearbyClouds);
     if (target) {
       const tp = projectWorldPt(target.wx, target.wy, target.wz, cb);
-      if (tp) {
+      const onScreen = tp && tp.x >= 6 && tp.x <= LCD_W - 6 && tp.y >= 6 && tp.y <= LCD_H - 6;
+      if (onScreen) {
         ctx.strokeStyle = PAL.INDIGO_OUTLINE; ctx.lineWidth = 2;
         ctx.beginPath(); ctx.arc(tp.x, tp.y, 4.0, 0, Math.PI * 2); ctx.stroke();
         ctx.strokeStyle = target.isCloud ? PAL.NEON_CYAN : PAL.CRIMSON; ctx.lineWidth = 1;
         ctx.beginPath(); ctx.arc(tp.x, tp.y, 4.0, 0, Math.PI * 2); ctx.stroke();
         ctx.fillStyle = target.isCloud ? '#ffffff' : PAL.GOLD; ctx.fillRect((tp.x - 1) | 0, (tp.y - 1) | 0, 2, 2);
+      } else {
+        // 화면 밖 앵커 테두리 방향 화살표 (320x170 초경량 벡터)
+        const rawX = tp ? tp.x : (target.side > 0 ? LCD_W + 20 : -20);
+        const rawY = tp ? tp.y : 14;
+        const ex = Math.max(8, Math.min(LCD_W - 8, rawX)) | 0;
+        const ey = Math.max(10, Math.min(LCD_H - 12, rawY)) | 0;
+        const ang = Math.atan2(rawY - ey, rawX - ex);
+        const ax1 = (ex + Math.cos(ang) * 4) | 0;
+        const ay1 = (ey + Math.sin(ang) * 4) | 0;
+        const ax2 = (ex + Math.cos(ang + 2.35) * 4) | 0;
+        const ay2 = (ey + Math.sin(ang + 2.35) * 4) | 0;
+        const ax3 = (ex + Math.cos(ang - 2.35) * 4) | 0;
+        const ay3 = (ey + Math.sin(ang - 2.35) * 4) | 0;
+        ctx.fillStyle = PAL.INDIGO_OUTLINE;
+        ctx.beginPath(); ctx.moveTo(ax1, ay1); ctx.lineTo(ax2, ay2); ctx.lineTo(ax3, ay3); ctx.closePath(); ctx.fill();
+        ctx.strokeStyle = target.isCloud ? PAL.NEON_CYAN : PAL.GOLD;
+        ctx.lineWidth = 1;
+        ctx.beginPath(); ctx.moveTo(ax2, ay2); ctx.lineTo(ax1, ay1); ctx.lineTo(ax3, ay3); ctx.stroke();
       }
     }
   } else if (isSwinging && handPos) {
     const ap = projectWorldPt(ax, ay, az, cb);
     const hasVoltWeb = getLv('volt_web') > 0;
-    const webCol = inPerfectWindow ? ((Math.floor(simTime * 28) & 1) ? '#ffffff' : PAL.GOLD)
+    const isPerfectVisual = inPerfectWindow || perfectGraceTimer > 0;
+    const webCol = isPerfectVisual ? ((Math.floor(simTime * 28) & 1) ? '#ffffff' : PAL.GOLD)
       : (hasVoltWeb ? ((Math.floor(simTime * 24) & 1) ? PAL.NEON_CYAN : PAL.GOLD)
-      : (passedBottom ? PAL.GOLD : '#ffffff'));
+      : (passedBottom ? PAL.GOLD : (isRopeTaut ? '#ffffff' : '#b8e4ff')));
     const endPt = ap ? ap : { x: (LCD_W * 0.5 + anchorSide * 55) | 0, y: 0 };
-    ctx.strokeStyle = (inPerfectWindow || hasVoltWeb) ? PAL.NEON_CYAN : PAL.INDIGO_OUTLINE;
-    ctx.lineWidth = (inPerfectWindow || hasVoltWeb) ? 3.5 : 3;
-    ctx.beginPath(); ctx.moveTo(handPos.x, handPos.y); ctx.lineTo(endPt.x, endPt.y); ctx.stroke();
+    const shootProg = swingWebShootTimer > 0 ? Math.max(0.28, 1.0 - swingWebShootTimer / 0.05) : 1.0;
+    const drawEndX = handPos.x + (endPt.x - handPos.x) * shootProg;
+    const drawEndY = handPos.y + (endPt.y - handPos.y) * shootProg;
+    const showSlackSag = !isRopeTaut && shootProg >= 1.0 && !hasVoltWeb;
+    const sagMidX = (handPos.x + drawEndX) * 0.5;
+    const sagMidY = (handPos.y + drawEndY) * 0.5 + 6.5;
+
+    ctx.strokeStyle = (isPerfectVisual || hasVoltWeb) ? PAL.NEON_CYAN : PAL.INDIGO_OUTLINE;
+    ctx.lineWidth = (isPerfectVisual || hasVoltWeb) ? 3.5 : (isRopeTaut ? 3 : 2.2);
+    ctx.beginPath();
+    ctx.moveTo(handPos.x, handPos.y);
+    if (showSlackSag) ctx.lineTo(sagMidX, sagMidY);
+    ctx.lineTo(drawEndX, drawEndY);
+    ctx.stroke();
+
     ctx.strokeStyle = webCol;
-    ctx.lineWidth = (inPerfectWindow || hasVoltWeb) ? 2.0 : 1.4;
-    ctx.beginPath(); ctx.moveTo(handPos.x, handPos.y); ctx.lineTo(endPt.x, endPt.y); ctx.stroke();
+    ctx.lineWidth = (isPerfectVisual || hasVoltWeb) ? 2.0 : (isRopeTaut ? 1.4 : 1.0);
+    ctx.beginPath();
+    ctx.moveTo(handPos.x, handPos.y);
+    if (showSlackSag) ctx.lineTo(sagMidX, sagMidY);
+    ctx.lineTo(drawEndX, drawEndY);
+    ctx.stroke();
 
     if (hasVoltWeb) {
-      const mx = (handPos.x + endPt.x) * 0.5 + (Math.random() - 0.5) * 8;
-      const my = (handPos.y + endPt.y) * 0.5 + (Math.random() - 0.5) * 8;
+      const mx = (handPos.x + drawEndX) * 0.5 + (Math.random() - 0.5) * 8;
+      const my = (handPos.y + drawEndY) * 0.5 + (Math.random() - 0.5) * 8;
       ctx.strokeStyle = '#ffffff';
       ctx.lineWidth = 1;
       ctx.beginPath();
-      ctx.moveTo(handPos.x, handPos.y); ctx.lineTo(mx, my); ctx.lineTo(endPt.x, endPt.y);
+      ctx.moveTo(handPos.x, handPos.y); ctx.lineTo(mx, my); ctx.lineTo(drawEndX, drawEndY);
       ctx.stroke();
     }
 
-    if (ap) {
+    if (ap && shootProg >= 0.95) {
       ctx.fillStyle = PAL.INDIGO_OUTLINE; ctx.fillRect((ap.x - 3) | 0, (ap.y - 3) | 0, 6, 6);
-      ctx.fillStyle = PAL.CRIMSON; ctx.fillRect((ap.x - 2) | 0, (ap.y - 2) | 0, 4, 4);
+      ctx.fillStyle = isPerfectVisual ? PAL.GOLD : PAL.CRIMSON; ctx.fillRect((ap.x - 2) | 0, (ap.y - 2) | 0, 4, 4);
     }
   }
 
