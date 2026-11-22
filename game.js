@@ -2543,23 +2543,32 @@ function tick(now) {
     } else {
       inPerfectWindow = false;
 
+      const effGrav = BASE_GRAVITY * aug.gravityMult;
+      const fallT = vy < -6.0 ? Math.min(1.0, (-vy - 6.0) / 70.0) : 0.0;
+      const fallGravMult = 1.45 + 0.40 * fallT;
+
       if (py > 6.5 && forwardInput < -0.25) {
         isGliding = true;
         isDiving = false;
         diveCharge = Math.max(0.0, diveCharge - 0.35 * dt);
-        vy -= (BASE_GRAVITY * 0.16 * aug.gravityMult) * dt;
+        vy -= (effGrav * 0.16) * dt;
         if (vy < -9.0) vy += (-9.0 - vy) * 9.0 * dt;
       } else if (py > 8.0 && vy < -6.0 && forwardInput > 0.25) {
         isGliding = false;
         isDiving = true;
-        vy -= (BASE_GRAVITY * aug.gravityMult + 34.0 * forwardInput) * dt;
+        vy -= (effGrav * fallGravMult + 38.0 * forwardInput) * dt;
         diveCharge = Math.min(1.0, diveCharge + 0.85 * forwardInput * dt);
       } else {
         isGliding = false;
         isDiving = false;
         diveCharge = Math.max(0.0, diveCharge - 0.28 * dt);
-        vy -= (BASE_GRAVITY * aug.gravityMult) * dt;
-        if (py > 75.0 && Math.abs(vy) < 20.0) vy += BASE_GRAVITY * 0.36 * dt;
+        if (vy < -6.0) {
+          vy -= (effGrav * fallGravMult) * dt;
+        } else if (py > 55.0 && vy <= 10.0) {
+          vy -= (effGrav * 0.50) * dt;
+        } else {
+          vy -= effGrav * dt;
+        }
       }
 
       if (doingFlip) {
