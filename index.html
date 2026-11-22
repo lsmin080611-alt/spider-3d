@@ -84,7 +84,7 @@
     <!-- Bottom Dual-Thumb Multi-Touch Controls -->
     <div class="controls-row">
       <!-- Left Virtual Analog Joystick (IO1 / IO2) -->
-      <div class="left-pad-zone flex flex-col items-center gap-1.5">
+      <div id="joy-zone" class="left-pad-zone flex flex-col items-center gap-1.5">
         <div id="joy-base" class="joy-base w-32 h-32 sm:w-36 sm:h-36 rounded-full flex items-center justify-center">
           <div class="joy-ring w-20 h-20 rounded-full pointer-events-none"></div>
           <span class="absolute top-2 text-[8px] font-mono text-sky-300/80 pointer-events-none">W·UP</span>
@@ -95,12 +95,12 @@
             <div class="w-4 h-4 rounded-full bg-slate-900/60 border border-slate-500/40"></div>
           </div>
         </div>
-        <span class="text-[10px] font-mono text-slate-400 tracking-wide">STICK · IO1/2</span>
+        <span class="ctrl-caption text-[10px] font-mono text-slate-400 tracking-wide pointer-events-none">STICK · IO1/2</span>
       </div>
 
       <!-- Right Dual Tactile Buttons: STRIKE (IO0) + SWING (IO14) -->
       <div class="right-btn-zone flex flex-col items-center gap-1.5">
-        <div class="flex items-end gap-2.5 sm:gap-3.5">
+        <div class="btn-pair flex items-end gap-2.5 sm:gap-3.5">
           <!-- Tactile Button 1: STRIKE (GPIO 0 / E / F / Shift) -->
           <button id="btn-strike" type="button" class="strike-btn w-24 h-24 sm:w-28 sm:h-28 rounded-full flex flex-col items-center justify-center mb-2">
             <svg class="w-7 h-7 mb-0.5 pointer-events-none" viewBox="0 0 36 36" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round">
@@ -129,7 +129,10 @@
             <span id="swing-btn-sub" class="text-[8.5px] font-mono opacity-85 mt-0.5 pointer-events-none">HOLD / JUMP</span>
           </button>
         </div>
-        <span class="text-[10px] font-mono text-slate-400 tracking-wide">TACTILE 1: STRIKE(E/SHIFT) · 2: SWING(SPACE)</span>
+        <span class="ctrl-caption text-[10px] font-mono text-slate-400 tracking-wide">
+          <span class="sm:hidden">STRIKE (IO0) · SWING (IO14)</span>
+          <span class="hidden sm:inline">TACTILE 1: STRIKE(E/SHIFT) · 2: SWING(SPACE)</span>
+        </span>
       </div>
     </div>
 

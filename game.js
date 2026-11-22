@@ -3405,23 +3405,24 @@ function setupControls() {
   btnScanline.addEventListener('click', toggleScanline);
   btnReset.addEventListener('click', resetGame);
 
+  const joyZone = document.getElementById('joy-zone') || joyBase;
   let joyPointerId = null;
-  const maxRadius = 42;
+  let joyOriginX = 0;
+  let joyOriginY = 0;
+  let joyMaxRadius = 40;
+  const JOY_MAX_ORIGIN_SHIFT = 18;
 
   function updateJoy(e) {
-    const rect = joyBase.getBoundingClientRect();
-    const cx = rect.left + rect.width * 0.5;
-    const cy = rect.top + rect.height * 0.5;
-    let dx = e.clientX - cx;
-    let dy = e.clientY - cy;
+    let dx = e.clientX - joyOriginX;
+    let dy = e.clientY - joyOriginY;
     const dist = Math.hypot(dx, dy);
-    if (dist > maxRadius) {
-      dx = (dx / dist) * maxRadius;
-      dy = (dy / dist) * maxRadius;
+    if (dist > joyMaxRadius) {
+      dx = (dx / dist) * joyMaxRadius;
+      dy = (dy / dist) * joyMaxRadius;
     }
     joyKnob.style.transform = 'translate3d(' + dx + 'px, ' + dy + 'px, 0)';
-    const nx = dx / maxRadius;
-    const ny = -dy / maxRadius;
+    const nx = dx / joyMaxRadius;
+    const ny = -dy / joyMaxRadius;
     joyX = Math.abs(nx) < 0.12 ? 0.0 : nx;
     joyY = Math.abs(ny) < 0.12 ? 0.0 : ny;
   }
@@ -3430,24 +3431,44 @@ function setupControls() {
     joyPointerId = null;
     joyX = 0.0; joyY = 0.0;
     joyKnob.style.transform = 'translate3d(0px, 0px, 0)';
+    joyBase.style.transform = 'translate3d(0px, 0px, 0)';
     joyKnob.classList.remove('active');
+    joyBase.classList.remove('active');
   }
 
-  joyBase.addEventListener('pointerdown', (e) => {
+  joyZone.addEventListener('pointerdown', (e) => {
     e.preventDefault();
     if (joyPointerId !== null) return;
     joyPointerId = e.pointerId;
-    joyBase.setPointerCapture(e.pointerId);
+    joyZone.setPointerCapture(e.pointerId);
+    // Reset transform before measuring so rapid re-taps never drift the resting center
+    joyBase.classList.add('active');
+    joyBase.style.transform = 'translate3d(0px, 0px, 0)';
+    const rect = joyBase.getBoundingClientRect();
+    const restCx = rect.left + rect.width * 0.5;
+    const restCy = rect.top + rect.height * 0.5;
+    joyMaxRadius = Math.min(42, Math.max(32, rect.width * 0.34));
+
+    let shiftX = e.clientX - restCx;
+    let shiftY = e.clientY - restCy;
+    const shiftDist = Math.hypot(shiftX, shiftY);
+    if (shiftDist > JOY_MAX_ORIGIN_SHIFT) {
+      shiftX = (shiftX / shiftDist) * JOY_MAX_ORIGIN_SHIFT;
+      shiftY = (shiftY / shiftDist) * JOY_MAX_ORIGIN_SHIFT;
+    }
+    joyOriginX = restCx + shiftX;
+    joyOriginY = restCy + shiftY;
+    joyBase.style.transform = 'translate3d(' + shiftX + 'px, ' + shiftY + 'px, 0)';
     joyKnob.classList.add('active');
     updateJoy(e);
   });
-  joyBase.addEventListener('pointermove', (e) => {
+  joyZone.addEventListener('pointermove', (e) => {
     if (e.pointerId !== joyPointerId) return;
     e.preventDefault();
     updateJoy(e);
   });
-  joyBase.addEventListener('pointerup', (e) => { if (e.pointerId === joyPointerId) clearJoy(); });
-  joyBase.addEventListener('pointercancel', (e) => { if (e.pointerId === joyPointerId) clearJoy(); });
+  joyZone.addEventListener('pointerup', (e) => { if (e.pointerId === joyPointerId) clearJoy(); });
+  joyZone.addEventListener('pointercancel', (e) => { if (e.pointerId === joyPointerId) clearJoy(); });
 
   btnStrike.addEventListener('pointerdown', (e) => {
     e.preventDefault();

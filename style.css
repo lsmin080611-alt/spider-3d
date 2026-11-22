@@ -82,12 +82,27 @@
     }
 
     /* Left Virtual Analog Joystick (IO1 / IO2) */
+    .left-pad-zone {
+      touch-action: none;
+      position: relative;
+      padding: 14px 16px 10px 16px;
+      margin: -14px -10px -10px -10px;
+      border-radius: 28px;
+    }
+
     .joy-base {
       background: radial-gradient(circle at 50% 45%, #182138 0%, #0e1424 70%, #090d18 100%);
       border: 2px solid #2f3d5d;
       box-shadow: inset 0 6px 16px rgba(0, 0, 0, 0.8), 0 6px 16px rgba(0, 0, 0, 0.45);
       position: relative;
       touch-action: none;
+      will-change: transform;
+      transition: transform 0.14s ease-out, border-color 0.12s ease;
+    }
+
+    .joy-base.active {
+      transition: none;
+      border-color: #4f72a8;
     }
 
     .joy-ring {
@@ -217,16 +232,53 @@
       gap: 8px;
     }
 
+    /* Portrait Smartphone Ergonomics: pull joystick & buttons inward from edges */
+    @media (max-width: 639px) and (orientation: portrait) {
+      .controls-row {
+        justify-content: space-evenly;
+        padding: 10px 14px max(22px, env(safe-area-inset-bottom)) 18px;
+        gap: 12px;
+      }
+      .left-pad-zone {
+        padding: 18px 20px 14px 20px;
+        margin: -18px -12px -14px -10px;
+      }
+      .joy-base {
+        width: 118px;
+        height: 118px;
+      }
+      .joy-ring {
+        width: 72px;
+        height: 72px;
+      }
+      .joy-knob {
+        width: 48px;
+        height: 48px;
+      }
+      .btn-pair {
+        gap: 10px;
+      }
+      .strike-btn {
+        width: 82px;
+        height: 82px;
+        margin-bottom: 10px;
+      }
+      .swing-btn {
+        width: 92px;
+        height: 92px;
+      }
+    }
+
     /* Landscape Smartphone Console Grid */
     @media (orientation: landscape) and (max-height: 560px) {
       .handheld-shell {
         display: grid;
-        grid-template-columns: 132px minmax(240px, 1fr) 186px;
+        grid-template-columns: minmax(160px, 23vw) minmax(240px, 1fr) minmax(196px, 26vw);
         grid-template-rows: auto 1fr;
         align-items: center;
         justify-items: center;
         gap: 6px 8px;
-        padding: max(6px, env(safe-area-inset-top)) max(10px, env(safe-area-inset-right)) max(6px, env(safe-area-inset-bottom)) max(10px, env(safe-area-inset-left));
+        padding: max(6px, env(safe-area-inset-top)) max(12px, env(safe-area-inset-right)) max(6px, env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-left));
       }
       .top-bar {
         grid-column: 2;
@@ -249,6 +301,8 @@
         flex-direction: column;
         align-items: center;
         justify-content: center;
+        padding: 18px 14px 12px max(18px, env(safe-area-inset-left));
+        margin: 0;
       }
       .right-btn-zone {
         grid-column: 3;
@@ -257,6 +311,30 @@
         flex-direction: column;
         align-items: center;
         justify-content: center;
+        padding-top: 8px;
+      }
+      .joy-base {
+        width: 114px;
+        height: 114px;
+      }
+      .joy-ring {
+        width: 70px;
+        height: 70px;
+      }
+      .joy-knob {
+        width: 46px;
+        height: 46px;
+      }
+      .btn-pair {
+        gap: 10px;
+      }
+      .strike-btn {
+        width: 80px;
+        height: 80px;
+      }
+      .swing-btn {
+        width: 90px;
+        height: 90px;
       }
       .desktop-hint {
         display: none;
