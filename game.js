@@ -82,6 +82,30 @@ let multiKillWindow = 0;
 let currentStage = 0;
 let runTimeRemaining = RUN_DURATION;
 let runTimerZeroTriggered = false;
+
+// Step 3: 6분 보스전 루프 상태 (INTRO -> 40s EVADE <-> 6.5s/3-HIT GROGGY -> DEFEATED)
+let bossActive = false;
+let bossPhase = 'NONE'; // 'NONE' | 'INTRO' | 'EVADE' | 'GROGGY' | 'DEFEATED'
+let bossEntity = null;
+let bossStage = 1; // 1: Normal, 2: Overdrive (HP <= 50%)
+let bossPhaseTimer = 0.0;
+let bossBattleTime = 0.0;
+let bossGroggyHits = 0;
+let bossEvadeFlash = 0.0;
+let bossLastCutSec = 0.0;
+let bossEscortTimer = 0.0;
+let bossFireTimer = 0.0;
+let bossPulseState = 'IDLE'; // 'IDLE' | 'WARN'
+let bossPulseTimer = 0.0;
+let bossPulseCd = 3.5;
+let bossLaserState = 'IDLE'; // 'IDLE' | 'AIM' | 'FIRE'
+let bossLaserTimer = 0.0;
+let bossLaserCd = 5.0;
+let bossLaserTx = 0.0, bossLaserTy = 95.0, bossLaserTz = 0.0;
+let bossMines = [];
+let bossDeathX = 0.0, bossDeathY = 95.0, bossDeathZ = 0.0;
+let bossDeathBoomTimer = 0.0;
+let runCleared = false;
 let stylePoints = 0.0;
 let styleRankIdx = 0;
 let peakStyleRankIdx = 0;
@@ -718,7 +742,6 @@ function updateBossSystem(dt, bList, oldX, oldY, oldZ, isStrikeProtected) {
 
   // 1) 보스 공전 기뢰 & 비행 경로 부유 기뢰 업데이트 + 충돌 판정
   const lvElastic = getLv('elastic');
-  const elasticSpec = getElasticSpec();
   for (let i = 0; i < bossMines.length; i++) {
     const m = bossMines[i];
     if (m.respawnTimer > 0) {
@@ -742,17 +765,19 @@ function updateBossSystem(dt, bList, oldX, oldY, oldZ, isStrikeProtected) {
 
     const dMine = pointToSegmentDist3D(m.x, m.y, m.z, oldX, oldY, oldZ, px, py, pz);
     if (dMine < m.radius + 3.4) {
-      if (lvElastic > 0 && elasticCharges > 0 && elasticSpec) {
+      if (lvElastic > 0 && elasticChargesLeft > 0) {
         // 탄성 반발 보유 시 기뢰 충돌도 반사 역전!
-        elasticCharges--;
+        elasticChargesLeft--;
+        const bounceMult = getElasticBounceMult();
+        const eShock = getElasticShockSpec();
         const nx = px - m.x, ny = py - m.y, nz = pz - m.z;
         const nl = Math.hypot(nx, ny, nz) || 1.0;
         const curSpd = Math.max(68.0, Math.hypot(vx, vy, vz));
-        vx = (nx / nl) * curSpd * elasticSpec.reflect;
+        vx = (nx / nl) * curSpd * bounceMult;
         vy = Math.max(24.0, (ny / nl) * curSpd * 0.6 + 22.0);
-        vz = (nz / nl) * curSpd * elasticSpec.reflect;
-        if (elasticSpec.critSec > 0) elasticCritTimer = elasticSpec.critSec;
-        triggerShockwave(m.x, m.y, m.z, elasticSpec.shockR, elasticSpec.shockDmg, PAL.EMERALD, null, 0);
+        vz = (nz / nl) * curSpd * bounceMult;
+        if (lvElastic >= 3) elasticCritTimer = 2.5;
+        if (eShock) triggerShockwave(m.x, m.y, m.z, eShock.radius, eShock.dmg, PAL.EMERALD, null, 0);
         m.respawnTimer = 4.0;
         addPopup('MINE BOUNCE!!', PAL.EMERALD, 2);
       } else if (!isStrikeProtected && invulnTimer <= 0) {
