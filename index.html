@@ -85,13 +85,13 @@
     <div class="controls-row">
       <!-- Left Virtual Analog Joystick (IO1 / IO2) -->
       <div id="joy-zone" class="left-pad-zone flex flex-col items-center gap-1.5">
-        <div id="joy-base" class="joy-base w-32 h-32 sm:w-36 sm:h-36 rounded-full flex items-center justify-center">
-          <div class="joy-ring w-20 h-20 rounded-full pointer-events-none"></div>
+        <div id="joy-base" class="joy-base rounded-full flex items-center justify-center">
+          <div class="joy-ring absolute rounded-full pointer-events-none"></div>
           <span class="absolute top-2 text-[8px] font-mono text-sky-300/80 pointer-events-none">W·UP</span>
           <span class="absolute bottom-2 text-[8px] font-mono text-emerald-300/80 pointer-events-none">S·GLIDE</span>
           <span class="absolute left-2.5 text-[9px] font-mono text-slate-500 pointer-events-none">A</span>
           <span class="absolute right-2.5 text-[9px] font-mono text-slate-500 pointer-events-none">D</span>
-          <div id="joy-knob" class="joy-knob w-12 h-12 sm:w-14 sm:h-14 rounded-full pointer-events-none flex items-center justify-center">
+          <div id="joy-knob" class="joy-knob relative rounded-full pointer-events-none flex items-center justify-center">
             <div class="w-4 h-4 rounded-full bg-slate-900/60 border border-slate-500/40"></div>
           </div>
         </div>
@@ -100,10 +100,10 @@
 
       <!-- Right Dual Tactile Buttons: STRIKE (IO0) + SWING (IO14) -->
       <div class="right-btn-zone flex flex-col items-center gap-1.5">
-        <div class="btn-pair flex items-end gap-2.5 sm:gap-3.5">
+        <div class="btn-pair flex items-end gap-2 sm:gap-3.5">
           <!-- Tactile Button 1: STRIKE (GPIO 0 / E / F / Shift) -->
-          <button id="btn-strike" type="button" class="strike-btn w-24 h-24 sm:w-28 sm:h-28 rounded-full flex flex-col items-center justify-center mb-2">
-            <svg class="w-7 h-7 mb-0.5 pointer-events-none" viewBox="0 0 36 36" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round">
+          <button id="btn-strike" type="button" class="strike-btn rounded-full flex flex-col items-center justify-center">
+            <svg class="btn-icon mb-0.5 pointer-events-none" viewBox="0 0 36 36" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round">
               <circle cx="18" cy="18" r="10" stroke-dasharray="5 3" />
               <line x1="18" y1="4" x2="18" y2="11" />
               <line x1="18" y1="25" x2="18" y2="32" />
@@ -111,13 +111,13 @@
               <line x1="25" y1="18" x2="32" y2="18" />
               <circle cx="18" cy="18" r="2.5" fill="currentColor" />
             </svg>
-            <span id="strike-btn-label" class="text-[11px] font-extrabold tracking-wide pointer-events-none">STRIKE</span>
-            <span id="strike-btn-sub" class="text-[8.5px] font-mono opacity-85 pointer-events-none">NO LOCK</span>
+            <span id="strike-btn-label" class="btn-title font-extrabold tracking-wide pointer-events-none">STRIKE</span>
+            <span id="strike-btn-sub" class="btn-sub font-mono opacity-85 pointer-events-none">NO LOCK</span>
           </button>
 
           <!-- Tactile Button 2: SWING (GPIO 14 / SPACE) -->
-          <button id="btn-swing" type="button" class="swing-btn w-[104px] h-[104px] sm:w-[112px] sm:h-[112px] rounded-full flex flex-col items-center justify-center text-white">
-            <svg class="w-7 h-7 mb-0.5 opacity-95 pointer-events-none" viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round">
+          <button id="btn-swing" type="button" class="swing-btn rounded-full flex flex-col items-center justify-center text-white">
+            <svg class="btn-icon mb-0.5 opacity-95 pointer-events-none" viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round">
               <line x1="24" y1="4" x2="24" y2="44" />
               <line x1="4" y1="24" x2="44" y2="24" />
               <line x1="9.8" y1="9.8" x2="38.2" y2="38.2" />
@@ -125,8 +125,8 @@
               <polygon points="24,13 31.8,16.2 35,24 31.8,31.8 24,35 16.2,31.8 13,24 16.2,16.2" stroke-width="1.8" opacity="0.85"/>
               <polygon points="24,18.5 27.9,20.1 29.5,24 27.9,27.9 24,29.5 20.1,27.9 18.5,24 20.1,20.1" stroke-width="1.6" opacity="0.7"/>
             </svg>
-            <span id="swing-btn-label" class="text-[11px] font-extrabold tracking-wider pointer-events-none">SWING</span>
-            <span id="swing-btn-sub" class="text-[8.5px] font-mono opacity-85 mt-0.5 pointer-events-none">HOLD / JUMP</span>
+            <span id="swing-btn-label" class="btn-title font-extrabold tracking-wider pointer-events-none">SWING</span>
+            <span id="swing-btn-sub" class="btn-sub font-mono opacity-85 mt-0.5 pointer-events-none">HOLD / JUMP</span>
           </button>
         </div>
         <span class="ctrl-caption text-[10px] font-mono text-slate-400 tracking-wide">

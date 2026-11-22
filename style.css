@@ -91,6 +91,8 @@
     }
 
     .joy-base {
+      width: 144px;
+      height: 144px;
       background: radial-gradient(circle at 50% 45%, #182138 0%, #0e1424 70%, #090d18 100%);
       border: 2px solid #2f3d5d;
       box-shadow: inset 0 6px 16px rgba(0, 0, 0, 0.8), 0 6px 16px rgba(0, 0, 0, 0.45);
@@ -106,10 +108,15 @@
     }
 
     .joy-ring {
+      position: absolute;
+      width: 82px;
+      height: 82px;
       border: 1px dashed rgba(184, 228, 255, 0.24);
     }
 
     .joy-knob {
+      width: 54px;
+      height: 54px;
       background: radial-gradient(circle at 35% 30%, #526796 0%, #293654 55%, #161e33 100%);
       border: 2px solid #738ec4;
       box-shadow: 0 6px 14px rgba(0, 0, 0, 0.7), inset 0 2px 3px rgba(255, 255, 255, 0.25);
@@ -121,8 +128,26 @@
       box-shadow: 0 0 16px rgba(104, 176, 240, 0.5), inset 0 2px 4px rgba(255, 255, 255, 0.35);
     }
 
+    .btn-icon {
+      width: 28px;
+      height: 28px;
+    }
+
+    .btn-title {
+      font-size: 11px;
+      line-height: 1.1;
+    }
+
+    .btn-sub {
+      font-size: 8.5px;
+      line-height: 1.1;
+    }
+
     /* Tactile Button 1: STRIKE (GPIO 0 / E / F / SHIFT) */
     .strike-btn {
+      width: 112px;
+      height: 112px;
+      margin-bottom: 8px;
       background: radial-gradient(circle at 35% 28%, #273554 0%, #172036 65%, #0d1324 100%);
       border: 3px solid #495d87;
       color: #94a3b8;
@@ -168,6 +193,8 @@
 
     /* Tactile Button 2: SWING (GPIO 14 / SPACE) */
     .swing-btn {
+      width: 112px;
+      height: 112px;
       background: radial-gradient(circle at 35% 28%, #e82848 0%, #b51834 55%, #6b0d1f 100%);
       border: 3px solid #ff7a90;
       box-shadow:
@@ -232,40 +259,50 @@
       gap: 8px;
     }
 
-    /* Portrait Smartphone Ergonomics: pull joystick & buttons inward from edges */
+    /* Portrait Smartphone Ergonomics: fit cleanly inside 360px+ with inward margins */
     @media (max-width: 639px) and (orientation: portrait) {
       .controls-row {
-        justify-content: space-evenly;
-        padding: 10px 14px max(22px, env(safe-area-inset-bottom)) 18px;
-        gap: 12px;
-      }
-      .left-pad-zone {
-        padding: 18px 20px 14px 20px;
-        margin: -18px -12px -14px -10px;
-      }
-      .joy-base {
-        width: 118px;
-        height: 118px;
-      }
-      .joy-ring {
-        width: 72px;
-        height: 72px;
-      }
-      .joy-knob {
-        width: 48px;
-        height: 48px;
-      }
-      .btn-pair {
+        justify-content: space-between;
+        padding: 10px 8px max(20px, env(safe-area-inset-bottom)) 12px;
         gap: 10px;
       }
+      .left-pad-zone {
+        padding: 14px 12px 10px 12px;
+        margin: -14px -8px -10px -8px;
+      }
+      .joy-base {
+        width: 112px;
+        height: 112px;
+      }
+      .joy-ring {
+        width: 66px;
+        height: 66px;
+      }
+      .joy-knob {
+        width: 46px;
+        height: 46px;
+      }
+      .btn-pair {
+        gap: 8px;
+      }
       .strike-btn {
-        width: 82px;
-        height: 82px;
+        width: 72px;
+        height: 72px;
         margin-bottom: 10px;
       }
       .swing-btn {
-        width: 92px;
-        height: 92px;
+        width: 82px;
+        height: 82px;
+      }
+      .btn-icon {
+        width: 21px;
+        height: 21px;
+      }
+      .btn-title {
+        font-size: 9.5px;
+      }
+      .btn-sub {
+        font-size: 7.5px;
       }
     }
 
@@ -273,7 +310,7 @@
     @media (orientation: landscape) and (max-height: 560px) {
       .handheld-shell {
         display: grid;
-        grid-template-columns: minmax(160px, 23vw) minmax(240px, 1fr) minmax(196px, 26vw);
+        grid-template-columns: minmax(156px, 23vw) minmax(240px, 1fr) minmax(186px, 26vw);
         grid-template-rows: auto 1fr;
         align-items: center;
         justify-items: center;
@@ -314,27 +351,37 @@
         padding-top: 8px;
       }
       .joy-base {
-        width: 114px;
-        height: 114px;
+        width: 112px;
+        height: 112px;
       }
       .joy-ring {
-        width: 70px;
-        height: 70px;
+        width: 66px;
+        height: 66px;
       }
       .joy-knob {
         width: 46px;
         height: 46px;
       }
       .btn-pair {
-        gap: 10px;
+        gap: 8px;
       }
       .strike-btn {
-        width: 80px;
-        height: 80px;
+        width: 72px;
+        height: 72px;
       }
       .swing-btn {
-        width: 90px;
-        height: 90px;
+        width: 82px;
+        height: 82px;
+      }
+      .btn-icon {
+        width: 21px;
+        height: 21px;
+      }
+      .btn-title {
+        font-size: 9.5px;
+      }
+      .btn-sub {
+        font-size: 7.5px;
       }
       .desktop-hint {
         display: none;
