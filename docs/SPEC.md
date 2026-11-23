@@ -163,3 +163,16 @@
   - 사전 베이크된 디더링 타일 패턴 건물(랭크별 5종 팔레트, 벽돌, 1층 어닝, 옥상 물탱크·펜트하우스, `A/S` 랭크 네온 창문·안테나 점등), 50% 체커보드 그림자, 도로 위 옐로우 택시.
 - **캐릭터 스프라이트:** `24×28` 도트 스파이더맨 스킨 총 18종 (기본 6종 + Case 3 카툰 STRIKE 4종 + 오프닝 옥상/낙하 5종 `ROOF_IDLE`, `ROOF_WALK_A/B`, `DROP_POSE`, `DROP_HERO` + Step 4 전용 3종 `APEX_SLAM`, `APEX_MACH`, `APEX_RICOCHET`).
 - **ESP32-S3 60fps 대응 원칙:** 실시간 셰이더 배제, 사전 베이크 패턴·크로마키 스프라이트 블릿·벡터 선분/원형 이펙트(번개선, 충격파 링, 스파크) 위주 구성.
+
+---
+
+## 6. [Step 5] 초경량 수동 부저 칩튠 사운드 엔진 (`js/audio.js`)
+- **하드웨어 1:1 호환 설계:** ESP32-S3 **수동 피에조 부저(`ledcWriteTone`)** 직이식을 전제로, 외부 음원 파일 없이 순수 `[freqHz, durMs]` 노트 시퀀스 테이블 + 단일 사각파 오실레이터(WebAudio 로우패스 3.4kHz 보정)로 구현.
+- **단음 우선순위 중재(Monophonic Preemption):**
+  - SFX 22종 각각에 우선순위(`prio 3~10`)와 쿨타임(`cd 38~300ms`)을 부여하여, 상위 SFX가 단일 부저 채널을 즉시 선점하고 종료 시 자동으로 BGM으로 복귀.
+  - 주요 SFX: 스윙·점프·퍼펙트 릴리즈·탄성 반발(`web_shoot`, `web_release`, `perfect_release`, `jump`, `bounce`), 3-Case STRIKE·타격·격파·충격파(`strike_dive/pull/hyper`, `hit`, `hit_crit`, `enemy_kill`, `shockwave`), 랭크 업·피격·게임오버(`rank_up`, `player_hit`, `gameover`), 증강 UI(`draft_open`, `ui_move`, `ui_confirm`), 보스 페이즈(`boss_alarm`, `boss_groggy`, `boss_clear`), Step 4 불릿타임(`apex_freeze`, `apex_release`).
+- **1채널 칩튠 BGM 시퀀서 (`updateAudio(rawDt)`):**
+  - 일반 스윙 테마(E단조 64스텝, `RANK S` 도달 시 템포 가속) ↔ 6분 보스전 테마(D단조 64스텝, Phase 2 템포 가속) 자동 전환.
+  - 옥상 대기(`ROOF_WAIT`), 게임오버, 증강 드래프트, `APEX CUT` Act 1 정지 구간에서는 BGM 자동 정지(Act 2 슬로우 중 볼륨 감쇠).
+- **조작 & 모바일 Autoplay 대응:** 첫 터치/키 입력 시 `AudioContext` 자동 언락(`unlockAudio()`), 상단 바 `BZR: ALL` / `BZR: SFX` / `BZR: OFF` 3단 토글(PC 단축키 `M`).
+

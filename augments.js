@@ -530,12 +530,14 @@ function openAugmentDraft() {
   draftJoyLock = false;
   draftLockTimer = 0.65; // 창이 열린 직후 0.65초간 실수 확정 방지 (Invariant 유지)
   augmentDraftOpen = true;
+  if (typeof playSfx === 'function') playSfx('draft_open');
 }
 
 function moveDraftCursor(dir) {
   if (!augmentDraftOpen || draftChoices.length === 0) return;
   const n = draftChoices.length;
   draftCursor = (draftCursor + dir + n) % n;
+  if (typeof playSfx === 'function') playSfx('ui_move');
 }
 
 function confirmAugment(idx) {
@@ -560,6 +562,7 @@ function confirmAugment(idx) {
 
   const popSuffix = newLv === MAX_AUG_LEVEL ? ' ★MAX!!' : (' Lv.' + newLv + '!');
   addPopup(picked.name + popSuffix, newLv === MAX_AUG_LEVEL ? PAL.GOLD : picked.col, 3);
+  if (typeof playSfx === 'function') playSfx('ui_confirm');
 }
 
 // =========================================================================

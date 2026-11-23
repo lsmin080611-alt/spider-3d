@@ -256,6 +256,7 @@ function spawnWave(waveNum) {
 
 
 function resetGame() {
+  if (typeof resetAudioForNewRun === 'function') resetAudioForNewRun();
   camYaw = 0.0;
   isSwinging = false;
   swingHeld = false;

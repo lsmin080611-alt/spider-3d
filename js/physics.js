@@ -119,6 +119,7 @@ function startWebSwing(bList, cList, fromGroundLaunch = false) {
   isRopeTaut = false;
   doingFlip = false;
   spawnSparks(ax, ay, az, target.isCloud ? '#b8e4ff' : '#ffffff', 7, 22);
+  if (typeof playSfx === 'function') playSfx('web_shoot');
   if (wasOpeningDropCatch) {
     completeOpeningCatch();
   }
@@ -155,6 +156,7 @@ function onSwingDown() {
     if (hSpd < 26.0) { vx = sinY * 26.0; vz = cosY * 26.0; }
     autoCatchAfterJump = true;
     spawnSparks(px, 1.5, pz, '#b8e4ff', 8, 20);
+    if (typeof playSfx === 'function') playSfx('jump');
     return;
   }
 
@@ -218,6 +220,7 @@ function onSwingUp() {
         spawnSparks(px, py, pz, PAL.GOLD, 10, 34);
         spawnSparks(px, py, pz, PAL.NEON_CYAN, 8, 30);
         addPopup('PERFECT RELEASE!!', PAL.NEON_CYAN, 3);
+        if (typeof playSfx === 'function') playSfx('perfect_release');
 
         // [Step 4] 고탄성 번지줄 Lv.3 대아크 PERFECT -> 3.4s 버프 저장 (수동 STRIKE 적중 시에만 컷신 발동!)
         if (lvBung >= 3 && swingDepth >= 68.0 && vy >= 95.0) {
@@ -242,6 +245,7 @@ function onSwingUp() {
         } else {
           addStylePoints(2, 4.6);
         }
+        if (typeof playSfx === 'function') playSfx('web_release');
       }
 
       doingFlip = true;
@@ -303,6 +307,7 @@ function handleBuildingsCollisionAndProximity(bList) {
             const lvElastic = getLv('elastic');
             if (lvElastic > 0 && elasticChargesLeft > 0) {
               elasticChargesLeft--;
+              if (typeof playSfx === 'function') playSfx('bounce');
               const bounceMult = getElasticBounceMult();
               const rx = (vx - 2.0 * vn * nx) * bounceMult;
               const rz = (vz - 2.0 * vn * nz) * bounceMult;

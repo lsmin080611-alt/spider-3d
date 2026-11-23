@@ -152,6 +152,7 @@ const APEX_ACT2_DUR   = 2.05;   // Act 2 (1.05~2.05s): 매치 컷 앵글 전환 
 const APEX_TOTAL_DUR  = 3.00;   // Act 3 (2.05~3.00s): 100% 원속 재개 + 드라이브바이 지연 추격 스냅백
 const APEX_ACT2_SCALE = 0.14;   // Act 2 월드 초슬로우 배율
 let btnApexTest = null;
+let btnSound = null;
 let apexActive = false;
 let apexId = '';
 let apexTimer = 0.0;
@@ -307,6 +308,7 @@ function syncStageFromStyleRank(announce = true) {
       ];
       addPopup(rankBanners[styleRankIdx] || ('RANK ' + info.label + '!'), info.col, 3);
       spawnSparks(px, py, pz, info.col, 14 + styleRankIdx * 2, 34 + styleRankIdx * 4);
+      if (typeof playSfx === 'function') playSfx('rank_up');
     }
   }
 }
@@ -383,5 +385,8 @@ function takeDamage(amount, reasonText) {
     isSwinging = false;
     inPerfectWindow = false;
     lassoTargets = [];
+    if (typeof playSfx === 'function') playSfx('gameover');
+  } else {
+    if (typeof playSfx === 'function') playSfx('player_hit');
   }
 }

@@ -16,16 +16,17 @@
 - `index.html` — 320×170 Canvas, T-Display-S3 프레임, 아래 순서대로 스크립트 로드
 - `style.css` — 기기 베젤, 가상 조이스틱(`#joy-zone`), 2버튼 모바일 반응형
 1. `assets.js` (~1,228L) — PC-98 팔레트, 베이어/벽돌 패턴, 2번 구름, 5종 360° 파노라마, 18종 스파이더맨·랭크 스프라이트
-2. `augments.js` (~818L) — 13종 증강 데이터, 4슬롯·Lv.1~3 스펙, `augLevels`, `resetAugments()`, `getAugStats()`, 드래프트 UI(`draftLockTimer`)·HUD
-3. `js/state.js` (~387L) — 전역 상수·상태 변수, 이펙트 헬퍼, 스타일 랭크, 피격(`takeDamage`)
-4. `js/world.js` (~327L) — 맨해튼 도시 생성(`getBlockData`), 웨이브 스폰(`spawnWave`), `resetGame()`
-5. `js/boss.js` (~465L) — 6분 보스전 `OMEGA SOVEREIGN` (`onRunTimerZero`, `updateBossSystem`, 기뢰/호위/레이저)
-6. `js/cutscene.js` (~962L) — Step 2 옥상 오프닝 5-Cut + Step 4 Lv.3 `APEX CUT` 3-Act 컷씬
-7. `js/physics.js` (~376L) — 입력 읽기, 앵커 탐색·웹 스윙 진자, 건물 충돌·월슬라이드·탄성 반발
-8. `js/combat.js` (~1,152L) — `applyEnemyDamage`/`triggerShockwave`, 3-Case STRIKE·속도 스케일링, 적 AI·전투 엔진
-9. `js/renderer.js` (~1,394L) — 3D 카메라·투영·클리핑, 빌딩/적/보스/스파이더맨 렌더, `renderWorld3D()`
-10. `js/hud.js` (~603L) — 레이더, 화면 밖 마커, `renderHUD()` (레터박스·스탯·보스 바·스타일 엠블럼·결과창·스캔라인)
-11. `js/main.js` (~1,031L) — 60fps 메인 루프(`tick()`), 멀티터치/키보드 조작(`setupControls`), `initApp()`
+2. `augments.js` (~820L) — 13종 증강 데이터, 4슬롯·Lv.1~3 스펙, `augLevels`, `resetAugments()`, `getAugStats()`, 드래프트 UI(`draftLockTimer`)·HUD
+3. `js/audio.js` (~250L) — Step 5 ESP32 수동 부저(`ledcWriteTone`) 1:1 단음 칩튠 SFX(22종)·1채널 BGM 시퀀서
+4. `js/state.js` (~393L) — 전역 상수·상태 변수, 이펙트 헬퍼, 스타일 랭크, 피격(`takeDamage`)
+5. `js/world.js` (~328L) — 맨해튼 도시 생성(`getBlockData`), 웨이브 스폰(`spawnWave`), `resetGame()`
+6. `js/boss.js` (~468L) — 6분 보스전 `OMEGA SOVEREIGN` (`onRunTimerZero`, `updateBossSystem`, 기뢰/호위/레이저)
+7. `js/cutscene.js` (~988L) — Step 2 옥상 오프닝 5-Cut + Step 4 Lv.3 `APEX CUT` 3-Act 컷씬
+8. `js/physics.js` (~382L) — 입력 읽기, 앵커 탐색·웹 스윙 진자, 건물 충돌·월슬라이드·탄성 반발
+9. `js/combat.js` (~1,160L) — `applyEnemyDamage`/`triggerShockwave`, 3-Case STRIKE·속도 스케일링, 적 AI·전투 엔진
+10. `js/renderer.js` (~1,394L) — 3D 카메라·투영·클리핑, 빌딩/적/보스/스파이더맨 렌더, `renderWorld3D()`
+11. `js/hud.js` (~603L) — 레이더, 화면 밖 마커, `renderHUD()` (레터박스·스탯·보스 바·스타일 엠블럼·결과창·스캔라인)
+12. `js/main.js` (~1,050L) — 60fps 메인 루프(`tick()`), 멀티터치/키보드 조작(`setupControls`), `initApp()`
 
 ---
 
@@ -43,11 +44,13 @@
 | 증강 4슬롯·Lv.1~3·13종 로스터·오입력 방지 | `§4-1 ~ §4-3. 로그라이크 증강 시스템` | `L110~139` |
 | Lv.3 `APEX CUT` 6종 3.0초 3-Act 불릿타임 3D 컷씬 | `§4-4. [Step 4] APEX CUT` | `L140~155` |
 | PC-98 도트 비주얼·2번 구름·18종 스프라이트·60fps | `§5. PC-98 빈티지 도트 비주얼` | `L158~165` |
+| 수동 부저(`ledcWriteTone`) 1:1 단음 칩튠 SFX·BGM | `§6. [Step 5] 초경량 수동 부저 칩튠 사운드 엔진` | `L169~179` |
 
 ---
 
 ## 4. 모듈별 핵심 심볼 지도 (편집 전 대상 모듈만 부분 읽기 / `rg` 확인)
 
+- **`js/audio.js`:** `SFX_TABLE`, `BGM_SWING_STEPS`, `BGM_BOSS_STEPS`, `unlockAudio`, `cycleAudioMode`, `playSfx`, `resetAudioForNewRun`, `updateAudio`
 - **`js/state.js`:** 전역 상태(`GAME_MAX_ALTITUDE`, `BASE_GRAVITY`, `px/py/pz`, `BOSS_*`, `START_ROOF`, `APEX_*`), `spawnSparks`/`spawnExplosion`/`spawnDamageNumber`/`spawnLightningBolt`, `syncStageFromStyleRank`, `addStylePoints`, `dropStyleRanks`, `clearStrikeState`, `releaseLassoTargets`, `takeDamage`
 - **`js/world.js`:** `getBlockData`, `getNearbyWorldAt`, `getNearbyWorld`, `pushOutOfBuildings`, `spawnWave`, `resetGame`
 - **`js/boss.js`:** `resetBossState`, `spawnBossMines`, `spawnBossEscorts`, `spawnBossSynergyDrones`, `startBossEvadeTurn`, `startBossGroggyTurn`, `onRunTimerZero`, `updateBossSystem`
@@ -65,5 +68,5 @@
 ## 5. 진행 현황 & 남은 마일스톤
 - [x] 웹 프로토타입 코어 완성 (진자 물리·PC-98 비주얼·3-Case STRIKE·4슬롯 Lv.1~3 증강 13종·Step 1~4: 5단계 스타일 랭크/6분 타이머, 5-Cut 옥상 오프닝, 6분 보스전, Lv.3 `APEX CUT` 6종)
 - [x] `game.js` 역할별 9개 모듈(`js/*.js`) 분리 리팩토링 (토큰 절감 & C++ 1:1 포팅 대비)
-- [ ] 초경량 칩튠 효과음 (WebAudio → 추후 ESP32 피에조 부저/스피커)
+- [x] Step 5: 초경량 수동 부저 칩튠 사운드 엔진 (`js/audio.js` — ESP32 `ledcWriteTone` 1:1 단음 SFX 22종 + 1채널 BGM)
 - [ ] LILYGO T-Display-S3 (PlatformIO + `TFT_eSPI`) C++ 포팅 및 실기기 60fps 검증

@@ -157,6 +157,7 @@ function startBossEvadeTurn() {
   shakeMag = Math.max(shakeMag, 4.0);
   shockwaves.push({ x: bossEntity.x, y: bossEntity.y, z: bossEntity.z, r: 10, maxR: 115, life: 0.42, maxLife: 0.42, col: PAL.CRIMSON });
   addPopup('SHIELD UP! EVADE 40s (STRIKE TO CUT!)', PAL.CRIMSON, 3);
+  if (typeof playSfx === 'function') playSfx('boss_alarm');
 }
 
 function startBossGroggyTurn() {
@@ -174,11 +175,13 @@ function startBossGroggyTurn() {
   shockwaves.push({ x: bossEntity.x, y: bossEntity.y, z: bossEntity.z, r: 12, maxR: 165, life: 0.48, maxLife: 0.48, col: PAL.GOLD });
   spawnExplosion(bossEntity.x, bossEntity.y, bossEntity.z, PAL.GOLD, PAL.NEON_CYAN, 34);
   addPopup('CORE EXPOSED!! 6.5s BREAK!', PAL.GOLD, 3);
+  if (typeof playSfx === 'function') playSfx('boss_groggy');
 }
 
 // Step 3 보스전 진입 훅 (06:00 카운트다운 종료 시 1회 발동)
 function onRunTimerZero() {
   runTimerZeroTriggered = true;
+  if (typeof playSfx === 'function') playSfx('boss_alarm');
   bossActive = true;
   bossPhase = 'INTRO';
   bossPhaseTimer = BOSS_INTRO_DURATION;

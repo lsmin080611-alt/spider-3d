@@ -54,10 +54,12 @@ function applyEnemyDamage(e, dmg, col, isCrit = false, dominoDepth = 0, showOneS
       spawnExplosion(bossDeathX, bossDeathY, bossDeathZ, PAL.GOLD, PAL.CRIMSON, 48);
       shockwaves.push({ x: bossDeathX, y: bossDeathY, z: bossDeathZ, r: 12, maxR: 185, life: 0.55, maxLife: 0.55, col: PAL.GOLD });
       addPopup('OMEGA SOVEREIGN DOWN!!', PAL.GOLD, 3);
+      if (typeof playSfx === 'function') playSfx('boss_clear');
       return true;
     }
 
     spawnSparks(e.x, e.y, e.z, bossPhase === 'GROGGY' ? PAL.GOLD : col, 8, 28);
+    if (typeof playSfx === 'function') playSfx(bossCrit ? 'hit_crit' : 'hit', bossPhase === 'GROGGY' ? 1.2 : 0.92);
     return false;
   }
 
@@ -89,6 +91,7 @@ function applyEnemyDamage(e, dmg, col, isCrit = false, dominoDepth = 0, showOneS
       : (e.type === 'SKY_CORE' ? PAL.NEON_PINK
       : (e.type === 'WALL_TURRET' ? PAL.CRIMSON : PAL.NEON_CYAN));
     spawnExplosion(e.x, e.y, e.z, expColA, PAL.GOLD, e.tier === 'ELITE' ? 34 : (e.tier === 'SWARM' ? 12 : 22));
+    if (typeof playSfx === 'function') playSfx('enemy_kill', e.tier === 'ELITE' ? 0.85 : (e.tier === 'SWARM' ? 1.2 : 1.0));
 
     if (e.tier === 'ELITE') {
       shakeMag = Math.max(shakeMag, 5.5);
@@ -115,6 +118,7 @@ function applyEnemyDamage(e, dmg, col, isCrit = false, dominoDepth = 0, showOneS
     return true;
   } else {
     spawnSparks(e.x, e.y, e.z, col, 6, 22);
+    if (typeof playSfx === 'function') playSfx(isCrit ? 'hit_crit' : 'hit', 1.0 + Math.min(0.35, finalDmg / 180));
     return false;
   }
 }
@@ -122,6 +126,7 @@ function applyEnemyDamage(e, dmg, col, isCrit = false, dominoDepth = 0, showOneS
 // 광역 충격파 헬퍼 (초중력 C1 / 마찰 과열 / 탄성 반발 / 도미노 폭발 / 낙하 운동량 공용)
 function triggerShockwave(cx, cy, cz, radius, dmg, col, ignoreEnemy = null, dominoDepth = 0) {
   shockwaves.push({ x: cx, y: cy, z: cz, r: 5, maxR: radius, life: 0.34, maxLife: 0.34, col });
+  if (typeof playSfx === 'function') playSfx('shockwave');
   clearProjectilesInRadius(cx, cy, cz, radius, col);
 
   const targets = [];
@@ -409,6 +414,7 @@ function onStrikePress() {
     shakeMag = Math.max(shakeMag, 2.2);
     spawnSparks(px, py, pz, PAL.ORANGE, 10, 28);
     addPopup(target ? 'DIVE SLAM LOCK!' : 'METEOR SLAM!', PAL.ORANGE, 2);
+    if (typeof playSfx === 'function') playSfx('strike_dive');
     return;
   }
 
@@ -450,6 +456,7 @@ function onStrikePress() {
     spawnSparks(px, py, pz, PAL.NEON_CYAN, 10, 30);
     spawnSparks(target.x, target.y, target.z, PAL.GOLD, 10, 32);
     addPopup('HYPER SNAP!!', PAL.NEON_CYAN, 2);
+    if (typeof playSfx === 'function') playSfx('strike_hyper');
   } else {
     strikePhase = 'HANG_SHOOT';
     strikePhaseDur = freezeDur;
@@ -467,6 +474,7 @@ function onStrikePress() {
     shakeMag = Math.max(shakeMag, 1.8);
     spawnSparks(px, py, pz, PAL.NEON_PINK, 10, 26);
     addPopup(CARTOON_MOTIONS[strikeMotionIdx].word, PAL.NEON_PINK, 2);
+    if (typeof playSfx === 'function') playSfx('strike_pull');
   }
 }
 

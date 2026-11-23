@@ -17,6 +17,7 @@ function tick(now) {
   if (dt > 0.05) dt = 0.05;
   if (dt < 0.001) dt = 0.016;
   const rawDt = dt;
+  if (typeof updateAudio === 'function') updateAudio(rawDt);
 
   fpsFrames++;
   fpsAcc += rawDt;
@@ -833,12 +834,27 @@ function setupControls() {
     btnScanline.textContent = scanlineOn ? 'SCANLINE: ON' : 'SCANLINE: OFF';
     btnScanline.classList.toggle('active', scanlineOn);
   };
+  const toggleSound = () => {
+    if (typeof cycleAudioMode !== 'function') return;
+    const mode = cycleAudioMode();
+    if (btnSound) {
+      btnSound.textContent = getAudioButtonLabel();
+      btnSound.classList.toggle('active', mode !== 'OFF');
+    }
+  };
 
   btnCam.addEventListener('click', toggleCam);
   btnShadow.addEventListener('click', toggleShadows);
   btnScanline.addEventListener('click', toggleScanline);
+  if (btnSound) btnSound.addEventListener('click', toggleSound);
   if (btnApexTest) btnApexTest.addEventListener('click', triggerApexTestCycle);
   btnReset.addEventListener('click', resetGame);
+
+  const unlockOnce = () => {
+    if (typeof unlockAudio === 'function') unlockAudio();
+  };
+  window.addEventListener('pointerdown', unlockOnce, { passive: true });
+  window.addEventListener('keydown', unlockOnce, { passive: true });
 
   const joyZone = document.getElementById('joy-zone') || joyBase;
   let joyPointerId = null;
@@ -962,6 +978,7 @@ function setupControls() {
       else if (e.code === 'KeyV') toggleCam();
       else if (e.code === 'KeyH') toggleShadows();
       else if (e.code === 'KeyL') toggleScanline();
+      else if (e.code === 'KeyM') toggleSound();
       else if (e.code === 'KeyR') resetGame();
       else if (e.code === 'KeyB' && openingPhase === 'ACTIVE' && !bossActive && !gameOver) {
         runTimeRemaining = 3.0;
@@ -993,6 +1010,7 @@ function initApp() {
     btnCam         = document.getElementById('btn-cam');
     btnShadow      = document.getElementById('btn-shadow');
     btnScanline    = document.getElementById('btn-scanline');
+    btnSound       = document.getElementById('btn-sound');
     btnApexTest    = document.getElementById('btn-apex-test');
     btnReset       = document.getElementById('btn-reset');
     btnSwing       = document.getElementById('btn-swing');

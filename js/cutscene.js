@@ -465,6 +465,7 @@ function tryTriggerApexCut(augId, payload, forceTest = false) {
 
   apexActive = true;
   apexId = augId;
+  if (typeof playSfx === 'function') playSfx('apex_freeze');
   apexTimer = 0.0;
   apexAct2Started = false;
   apexAct3Started = false;
@@ -816,6 +817,7 @@ function updateApexCutFreeze(rawDt) {
   if (!apexAct2Started) {
     apexAct2Started = true;
     apexFlashTimer = 0.055; // 매치 컷 2프레임 임팩트 스냅
+    if (typeof playSfx === 'function') playSfx('apex_release');
     const def = APEX_CUT_DEFS[apexId];
     const accCol = def ? def.col : PAL.GOLD;
     const tPt = (apexSceneExtras && apexSceneExtras.targetPt) ? apexSceneExtras.targetPt : { x: px, y: py, z: pz };
