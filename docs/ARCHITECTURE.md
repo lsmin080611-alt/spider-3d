@@ -12,14 +12,20 @@
 
 ---
 
-## 2. 웹 프로토타입 파일 구조 (`index.html` 순차 `<script>` 로드)
-1. `index.html` — 320×170 Canvas, T-Display-S3 프레임, 순차 스크립트 로드
-2. `style.css` — 기기 베젤, 가상 조이스틱(`#joy-zone`), 2버튼 모바일 반응형
-3. `assets.js` — PC-98 팔레트, 베이어/벽돌 패턴, 2번 구름, 5종 360° 파노라마, 18종 스파이더맨·랭크 스프라이트
-4. `augments.js` — 13종 증강 데이터, 4슬롯·Lv.1~3 스펙, `augLevels`, `resetAugments()`, `getAugStats()`, 드래프트 UI(`draftLockTimer`)·HUD
-5. `game.js` — 진자 웹 스윙 물리, 3-Case STRIKE, 5단계 스타일 랭크, 6분 타이머/XP, 보스전, 오프닝·APEX CUT 컷신, 3D 투영 렌더링, 메인 루프
-
-> **향후 리팩토링 목표 (C++ 1:1 이식 & 토큰 절감):** `game.js`를 `config / state / physics / combat / boss / cutscene / renderer / hud / main` 단위로 분리.
+## 2. 웹 프로토타입 파일 구조 (`index.html` 순차 `<script>` 로드 · CORS 안전)
+- `index.html` — 320×170 Canvas, T-Display-S3 프레임, 아래 순서대로 스크립트 로드
+- `style.css` — 기기 베젤, 가상 조이스틱(`#joy-zone`), 2버튼 모바일 반응형
+1. `assets.js` (~1,228L) — PC-98 팔레트, 베이어/벽돌 패턴, 2번 구름, 5종 360° 파노라마, 18종 스파이더맨·랭크 스프라이트
+2. `augments.js` (~818L) — 13종 증강 데이터, 4슬롯·Lv.1~3 스펙, `augLevels`, `resetAugments()`, `getAugStats()`, 드래프트 UI(`draftLockTimer`)·HUD
+3. `js/state.js` (~387L) — 전역 상수·상태 변수, 이펙트 헬퍼, 스타일 랭크, 피격(`takeDamage`)
+4. `js/world.js` (~327L) — 맨해튼 도시 생성(`getBlockData`), 웨이브 스폰(`spawnWave`), `resetGame()`
+5. `js/boss.js` (~465L) — 6분 보스전 `OMEGA SOVEREIGN` (`onRunTimerZero`, `updateBossSystem`, 기뢰/호위/레이저)
+6. `js/cutscene.js` (~962L) — Step 2 옥상 오프닝 5-Cut + Step 4 Lv.3 `APEX CUT` 3-Act 컷씬
+7. `js/physics.js` (~376L) — 입력 읽기, 앵커 탐색·웹 스윙 진자, 건물 충돌·월슬라이드·탄성 반발
+8. `js/combat.js` (~1,152L) — `applyEnemyDamage`/`triggerShockwave`, 3-Case STRIKE·속도 스케일링, 적 AI·전투 엔진
+9. `js/renderer.js` (~1,394L) — 3D 카메라·투영·클리핑, 빌딩/적/보스/스파이더맨 렌더, `renderWorld3D()`
+10. `js/hud.js` (~603L) — 레이더, 화면 밖 마커, `renderHUD()` (레터박스·스탯·보스 바·스타일 엠블럼·결과창·스캔라인)
+11. `js/main.js` (~1,031L) — 60fps 메인 루프(`tick()`), 멀티터치/키보드 조작(`setupControls`), `initApp()`
 
 ---
 
@@ -40,33 +46,24 @@
 
 ---
 
-## 4. 심볼 기반 코드 지도 (편집 전 `rg`로 정확한 줄 위치 확인)
+## 4. 모듈별 핵심 심볼 지도 (편집 전 대상 모듈만 부분 읽기 / `rg` 확인)
 
-### `game.js`
-- **상태·이펙트·데미지·스타일 랭크** (`~L1~482`): `applyEnemyDamage`, `triggerShockwave`, `syncStageFromStyleRank`, `addStylePoints`, `dropStyleRanks`
-- **보스전 (`OMEGA SOVEREIGN`)** (`~L483~945`): `resetBossState`, `spawnBossMines`, `spawnBossEscorts`, `spawnBossSynergyDrones`, `startBossEvadeTurn`, `startBossGroggyTurn`, `onRunTimerZero`, `updateBossSystem`
-- **피격·올가미·도시 생성·웨이브·오프닝 상태** (`~L946~1382`): `clearStrikeState`, `releaseLassoTargets`, `takeDamage`, `getBlockData`, `getNearbyWorld`, `spawnWave`, `handleOpeningAnyInput`, `completeOpeningCatch`, `resetGame`
-- **Lv.3 `APEX CUT` 3-Act 3D 컷씬** (`~L1383~2004`): `resetApexCutState`, `isApexFreezePhase`, `isApexAct2Phase`, `tryTriggerApexCut`, `triggerApexTestCycle`, `updateApexCutFreeze`, `applyApexReleaseCamera`
-- **STRIKE 판정·웹 스윙·건물 충돌** (`~L2005~2712`): `classifyStrikeCase`, `getSpeedDamageMult`, `computeStrikeDamage`, `onStrikePress`, `findWallAnchor`, `startWebSwing`, `onSwingDown`, `onSwingUp`, `handleBuildingsCollisionAndProximity`
-- **적 AI·전투 엔진** (`~L2713~3380`): `updateEnemyMovementAI`, `updateCombat`
-- **3D 카메라·투영·렌더러·레이더/마커** (`~L3381~4255`): `getCameraPos`, `projectWorldPt`, `drawPC98Building`, `drawEnemy3D`, `drawBossHazards3D`, `drawEnemyRadarHUD`, `drawOffscreenEnemyMarkers`, `drawSpiderManSprite`
-- **오프닝 컷신·메인 루프·프레임 렌더** (`~L4256~6445`): `updateOpeningCutscene`, `tick` (내부 `3. RENDER` 블록 `~L5343~6445`)
-- **입력·초기화** (`~L6446~6656`): `setupControls`, `initApp`
-
-### `augments.js`
-- **로스터·스펙 헬퍼** (`~L1~354`): `AUGMENTS`, `getLv`, `getOwnedAugmentCount`, `get*Spec()`
-- **XP·초기화·중앙 스탯** (`~L355~468`): `getXpRequirement`, `gainXp`, `resetAugments`, `getAugStats`
-- **드래프트·UI·HUD** (`~L472~818`): `openAugmentDraft`, `confirmAugment`, `drawAugmentDraftUI`, `drawActiveAugmentsHUD`
-
-### `assets.js`
-- **팔레트·베이어/벽돌 패턴** (`~L1~288`): `PAL`, `STAGE_THEMES`, `bakeAllStagePatterns`
-- **2번 구름·360° 파노라마** (`~L289~625`): `bakeCloud2Sprite`, `bakePanoramaStrip`
-- **캐릭터 18종·프롭·랭크 엠블럼** (`~L626~1228`): `bakeAllSpideySprites`, `bakePropSprites`, `bakeStyleRankSprites`
+- **`js/state.js`:** 전역 상태(`GAME_MAX_ALTITUDE`, `BASE_GRAVITY`, `px/py/pz`, `BOSS_*`, `START_ROOF`, `APEX_*`), `spawnSparks`/`spawnExplosion`/`spawnDamageNumber`/`spawnLightningBolt`, `syncStageFromStyleRank`, `addStylePoints`, `dropStyleRanks`, `clearStrikeState`, `releaseLassoTargets`, `takeDamage`
+- **`js/world.js`:** `getBlockData`, `getNearbyWorldAt`, `getNearbyWorld`, `pushOutOfBuildings`, `spawnWave`, `resetGame`
+- **`js/boss.js`:** `resetBossState`, `spawnBossMines`, `spawnBossEscorts`, `spawnBossSynergyDrones`, `startBossEvadeTurn`, `startBossGroggyTurn`, `onRunTimerZero`, `updateBossSystem`
+- **`js/cutscene.js`:** `isOpeningCutscene`, `isOpeningActive`, `handleOpeningAnyInput`, `completeOpeningCatch`, `updateOpeningCutscene`, `resetApexCutState`, `isApexFreezePhase`, `isApexAct2Phase`, `tryTriggerApexCut`, `triggerApexTestCycle`, `updateApexCutFreeze`, `applyApexReleaseCamera`
+- **`js/physics.js`:** `getInputs`, `findWallAnchor`, `startWebSwing`, `onSwingDown`, `onSwingUp`, `handleBuildingsCollisionAndProximity`
+- **`js/combat.js`:** `applyEnemyDamage`, `triggerShockwave`, `classifyStrikeCase`, `getSpeedDamageMult`, `computeStrikeDamage`, `findCase1Target`, `findBestLockTarget`, `findNextChainTarget`, `hasObstacleBehindTarget`, `onStrikePress`, `updateEnemyMovementAI`, `updateCombat`
+- **`js/renderer.js`:** `getCameraPos`, `makeCamBasis`, `projectWorldPt`, `drawClippedPoly3D`, `drawClippedLine3D`, `drawLightning3D`, `drawPC98Building`, `drawEnemy3D`, `drawBossHazards3D`, `drawSpiderManSprite`, `renderWorld3D`
+- **`js/hud.js`:** `drawEnemyRadarHUD`, `drawOffscreenEnemyMarkers`, `renderHUD`
+- **`js/main.js`:** `tick`, `setupControls`, `initApp`
+- **`augments.js`:** `AUGMENTS`, `getLv`, `getOwnedAugmentCount`, `get*Spec()`, `getXpRequirement`, `gainXp`, `resetAugments`, `getAugStats`, `openAugmentDraft`, `confirmAugment`, `drawAugmentDraftUI`, `drawActiveAugmentsHUD`
+- **`assets.js`:** `PAL`, `STAGE_THEMES`, `bakeAllStagePatterns`, `bakeCloud2Sprite`, `bakePanoramaStrip`, `bakeAllSpideySprites`, `bakePropSprites`, `bakeStyleRankSprites`
 
 ---
 
 ## 5. 진행 현황 & 남은 마일스톤
 - [x] 웹 프로토타입 코어 완성 (진자 물리·PC-98 비주얼·3-Case STRIKE·4슬롯 Lv.1~3 증강 13종·Step 1~4: 5단계 스타일 랭크/6분 타이머, 5-Cut 옥상 오프닝, 6분 보스전, Lv.3 `APEX CUT` 6종)
-- [ ] `game.js` 역할별 모듈 분리 리팩토링 (토큰 절감 & C++ 1:1 포팅 대비)
+- [x] `game.js` 역할별 9개 모듈(`js/*.js`) 분리 리팩토링 (토큰 절감 & C++ 1:1 포팅 대비)
 - [ ] 초경량 칩튠 효과음 (WebAudio → 추후 ESP32 피에조 부저/스피커)
 - [ ] LILYGO T-Display-S3 (PlatformIO + `TFT_eSPI`) C++ 포팅 및 실기기 60fps 검증
