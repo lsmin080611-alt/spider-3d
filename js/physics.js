@@ -21,6 +21,7 @@ function findWallAnchor(turnInput, fwdInput, bList, cList) {
   const horizSpd = Math.hypot(vx, vz);
   const hasTurnIntent = Math.abs(turnInput) >= 0.18;
   const preferSide = !hasTurnIntent ? -lastAnchorSide : (turnInput < 0 ? -1 : 1);
+  const lowAltFactor = py < 55.0 ? Math.min(1.0, (55.0 - py) / 55.0) : 0.0;
 
   for (const b of bList) {
     const dx = b.bx - px, dz = b.bz - pz;
@@ -39,8 +40,18 @@ function findWallAnchor(turnInput, fwdInput, bList, cList) {
       const cornerLocalX = (wx - px) * cosY - (wz - pz) * sinY;
       const side = cornerLocalX >= 0 ? 1 : -1;
 
-      const idealZ = 95.0 + horizSpd * 0.45;
+      const idealZ = (95.0 - 28.0 * lowAltFactor) + horizSpd * (0.45 - 0.17 * lowAltFactor);
       let sc = Math.abs(localZ - idealZ) + Math.abs(Math.abs(localX) - 56.0) * 0.48;
+      if (lowAltFactor > 0.0) {
+        // 저고도(py < 55m): 각도가 선(수직에 가까운) 앵커 우선 가중치로 고속 바닥 충돌 완화
+        const dyAnchor = targetWallY - py;
+        const horizDist = Math.hypot(wx - px, wz - pz);
+        const steepness = dyAnchor / Math.max(20.0, horizDist);
+        sc -= Math.min(55.0, steepness * 36.0) * lowAltFactor;
+        if (horizDist > dyAnchor * 1.45) {
+          sc += Math.min(60.0, (horizDist - dyAnchor * 1.45) * 0.55) * lowAltFactor;
+        }
+      }
       if (side === preferSide) sc -= hasTurnIntent ? 75.0 : 35.0;
 
       if (sc < minScore) {
@@ -195,8 +206,8 @@ function onSwingUp() {
       if (wasPerfect) {
         const lvBung = getLv('bungee_web');
         hitStopTimer = 0.045;
-        const upwardKick = (10.0 + depthRatio * 7.0) * aug.bungeeBounce;
-        const targetVy = Math.min(78.0 * aug.bungeeBounce, vy + upwardKick);
+        const upwardKick = (13.0 + depthRatio * 9.0) * aug.bungeeBounce;
+        const targetVy = Math.min(96.0 * aug.bungeeBounce, vy + upwardKick);
         vy = Math.max(vy, targetVy);
 
         const curSpd = Math.hypot(vx, vy, vz);
@@ -228,8 +239,8 @@ function onSwingUp() {
           lastBungeeAnchorPt = prevAnchorPt;
         }
       } else {
-        const upwardKick = (6.0 + depthRatio * 6.0) * aug.bungeeBounce;
-        const targetVy = Math.min(64.0 * aug.bungeeBounce, vy + upwardKick);
+        const upwardKick = (8.0 + depthRatio * 7.5) * aug.bungeeBounce;
+        const targetVy = Math.min(78.0 * aug.bungeeBounce, vy + upwardKick);
         vy = Math.max(vy, targetVy);
 
         const curHSpd = Math.hypot(vx, vz);
@@ -253,7 +264,7 @@ function onSwingUp() {
     } else if (swingTimer > 0.10 && vy > 4.0) {
       // 짧은 스윙 이탈 시에도 가벼운 도약 보정
       const microKick = 7.0 * aug.bungeeBounce;
-      vy = Math.max(vy, Math.min(48.0 * aug.bungeeBounce, vy + microKick));
+      vy = Math.max(vy, Math.min(56.0 * aug.bungeeBounce, vy + microKick));
       doingFlip = true;
       flipAngle = 0.0;
     }

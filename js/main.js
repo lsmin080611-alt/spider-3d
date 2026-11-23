@@ -273,16 +273,41 @@ function tick(now) {
 
       // 2) 아날로그 3구간 매핑 (조이스틱 전진 기본 자세 + 모서리 회전 + 벽 회피 양립)
       const isEvadingOutward = (turnInput * currentAnchorSide) < -0.25;
+      const isRisingArc = passedBottom && vy > -6.0;
       if (forwardInput > 0.15) {
-        // 접선(진행) 방향 추진 펌핑 (전진 크루즈 및 모서리 회전 시 속도 유지)
-        if (Math.hypot(vx, vy, vz) < maxSwingSpd) {
-          vx += sinY * forwardInput * (22.0 * aug.swingPushMult) * dt;
-          vz += cosY * forwardInput * (22.0 * aug.swingPushMult) * dt;
+        // 접선(진행) 방향 추진 펌핑 (상승 아크에서는 3D 진행 벡터로 상승 에너지 직접 전달)
+        const curSpd3D = Math.hypot(vx, vy, vz);
+        const pushCap = isRisingArc ? (maxSwingSpd * 1.06) : maxSwingSpd;
+        if (curSpd3D < pushCap) {
+          const pushAcc = forwardInput * (22.0 * aug.swingPushMult) * dt;
+          if ((isRisingArc || vy > 0.0) && curSpd3D > 8.0) {
+            vx += (vx / curSpd3D) * pushAcc;
+            vy += (vy / curSpd3D) * pushAcc;
+            vz += (vz / curSpd3D) * pushAcc;
+          } else {
+            vx += sinY * pushAcc;
+            vz += cosY * pushAcc;
+          }
         }
         // 정면 풀 푸시(>0.65) & 좌우 꺾기 적음(|turn|<0.35)일 때만 연속 비례 줄 당기기 (최소 46m 하한으로 벽 빨림 차단)
         if (forwardInput > 0.65 && Math.abs(turnInput) < 0.35 && ropeLen > 46.0) {
           const reelIntensity = Math.min(1.0, (forwardInput - 0.65) / 0.35);
-          ropeLen = Math.max(46.0, ropeLen - 20.0 * reelIntensity * dt);
+          const reelRate = (isRisingArc && isRopeTaut) ? 26.0 : 20.0;
+          const prevRopeLen = ropeLen;
+          ropeLen = Math.max(46.0, ropeLen - reelRate * reelIntensity * dt);
+          const reeledDist = prevRopeLen - ropeLen;
+          // 최저점 통과 후 상승 구간 줄당김 펌프 (바닥 부근 py <= 10m에서는 로켓 사출 방지를 위해 비활성)
+          if (reeledDist > 0.0 && isRisingArc && py > 10.0) {
+            const spdNow = Math.hypot(vx, vy, vz);
+            const pumpCap = maxSwingSpd + 14.0;
+            if (spdNow > 6.0 && spdNow < pumpCap) {
+              const tanAdd = Math.min(reeledDist * 0.85 * aug.swingPushMult, pumpCap - spdNow);
+              vx += (vx / spdNow) * tanAdd;
+              vy += (vy / spdNow) * tanAdd;
+              vz += (vz / spdNow) * tanAdd;
+            }
+            vy += reeledDist * 0.65 * aug.bungeeBounce;
+          }
         }
       } else if (forwardInput < -0.30) {
         // 의도적 후진(S): 연속 비례 줄 풀기 (깊은 저공 스윙 / 넓은 회전 반경)
@@ -304,8 +329,10 @@ function tick(now) {
       const predictedBottom = ay - ropeLen;
       if (predictedBottom < SAFE_SKIM_Y && py < 68.0) {
         const targetLen = Math.max(26.0, ay - SAFE_SKIM_Y);
-        const urgency = py < 22.0 ? 8.5 : (py < 40.0 ? 4.8 : 2.6);
-        const maxReelPerSec = py < 22.0 ? 52.0 : 34.0;
+        const curSpd = Math.hypot(vx, vy, vz);
+        const dynamicBase = Math.max(55.0, curSpd * 1.2);
+        const urgency = py < 22.0 ? 11.0 : (py < 40.0 ? 6.5 : 3.4);
+        const maxReelPerSec = py < 22.0 ? Math.max(dynamicBase * 1.25, 78.0) : dynamicBase;
         const deltaLen = Math.min(maxReelPerSec * dt, (ropeLen - targetLen) * urgency * dt);
         if (deltaLen > 0) ropeLen -= deltaLen;
       }
@@ -340,9 +367,10 @@ function tick(now) {
             // 직전 속력을 하드캡 없이 접선 방향으로 98.5% 보존
             targetSpd = speedAfter + (speedBefore - speedAfter) * 0.985;
           }
-          // 기본 순항 상한(maxSwingSpd) 초과 고속 구간은 공력 감쇠로 자연 수렴 (진공 활공 Lv.1 50%, Lv.2~3 0%)
+          // 기본 순항 상한(maxSwingSpd) 초과 고속 구간은 공력 감쇠로 자연 수렴 (상승 아크에서는 감쇠 완화, 진공 활공 Lv.1 50%/Lv.2~3 0%)
           if (targetSpd > maxSwingSpd && vacDrag > 0) {
-            targetSpd -= (targetSpd - maxSwingSpd) * Math.min(1.0, 1.35 * vacDrag * dt);
+            const dragRate = (passedBottom && vy > 0.0) ? 0.55 : 1.35;
+            targetSpd -= (targetSpd - maxSwingSpd) * Math.min(1.0, dragRate * vacDrag * dt);
           }
           const sc = targetSpd / speedAfter;
           vx *= sc; vy *= sc; vz *= sc;
@@ -398,7 +426,8 @@ function tick(now) {
         isDiving = true;
         vy -= (effGrav * 0.92 + Math.max(0.0, forwardInput) * 24.0) * dt;
         diveCharge = Math.min(0.65, diveCharge + 0.35 * dt);
-      } else if (py > 6.5 && forwardInput < -0.25) {
+      } else if (py > 6.5 && vy <= 0.0 && forwardInput < -0.25) {
+        // 활강 양력(0.16x 중력)은 하강 중(vy <= 0)에만 적용 — 상승 중 S 입력 시 정상 정점 도달 후 활강 전환
         isGliding = true;
         isDiving = false;
         diveCharge = Math.max(0.0, diveCharge - 0.35 * dt);
