@@ -726,17 +726,45 @@ function drawActiveAugmentsHUD(totalSpeed, swingingNow) {
     infoY -= 13;
   }
 
-  // 올가미 스윙 포획 수 표시
+  // 올가미 스윙 포획 슬롯 카운터 (LASSO ●●●○○ 3/6, 보유 시 상시 표시 / 각성 시 금색 점멸)
   const lassoSpec = getLassoSpec();
-  if (lassoSpec && lassoTargets.length > 0) {
-    const awakened = lassoTargets.length >= lassoSpec.awakenCount;
-    const txt = 'TIED ' + lassoTargets.length + '/' + lassoSpec.maxTied;
+  if (lassoSpec) {
+    const cnt = lassoTargets.length;
+    const maxT = lassoSpec.maxTied;
+    const awakened = cnt >= lassoSpec.awakenCount;
+    const allTied = (cnt > 0 && typeof enemies !== 'undefined' && enemies.length > 0 && cnt >= enemies.length);
+    const blink = (Math.floor((typeof simTime !== 'undefined' ? simTime : 0) * 14) & 1) === 0;
+    const dotsX = 34;
+    const numX = dotsX + maxT * 5 + 2;
+    const boxW = numX + 16 - 4;
+    const borderCol = awakened
+      ? (blink ? PAL.GOLD : '#ffffff')
+      : (allTied ? PAL.GOLD : (cnt > 0 ? '#ffffff' : '#64748b'));
+
     ctx.fillStyle = '#0c1228';
-    ctx.fillRect(4, infoY - 9, 58, 11);
-    ctx.strokeStyle = awakened ? PAL.GOLD : '#a78bfa';
-    ctx.strokeRect(4.5, infoY - 8.5, 57, 10);
-    ctx.fillStyle = awakened ? PAL.GOLD : '#d8b4fe';
-    ctx.fillText(txt, 7, infoY);
+    ctx.fillRect(4, infoY - 9, boxW, 11);
+    ctx.strokeStyle = borderCol;
+    ctx.strokeRect(4.5, infoY - 8.5, boxW - 1, 10);
+
+    ctx.fillStyle = awakened ? (blink ? PAL.GOLD : '#ffffff') : (cnt > 0 ? '#ffffff' : '#94a3b8');
+    ctx.fillText('LASSO', 7, infoY);
+
+    for (let d = 0; d < maxT; d++) {
+      const dx = dotsX + d * 5;
+      const dy = infoY - 6;
+      if (d < cnt) {
+        ctx.fillStyle = awakened ? (blink ? PAL.GOLD : '#ffffff') : '#ffffff';
+        ctx.fillRect(dx, dy, 3, 4);
+      } else {
+        ctx.fillStyle = '#1e293b';
+        ctx.fillRect(dx, dy, 3, 4);
+        ctx.strokeStyle = (d + 1 === lassoSpec.awakenCount) ? '#a78bfa' : '#475569';
+        ctx.strokeRect(dx + 0.5, dy + 0.5, 2, 3);
+      }
+    }
+
+    ctx.fillStyle = (allTied || awakened) ? PAL.GOLD : (cnt > 0 ? '#ffffff' : '#94a3b8');
+    ctx.fillText(cnt + '/' + maxT, numX, infoY);
     infoY -= 13;
   }
 

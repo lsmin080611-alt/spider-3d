@@ -278,6 +278,7 @@ function findCase1Target() {
   let best = null;
   let bestScore = 99999;
   for (const e of enemies) {
+    if (lassoTargets.indexOf(e) !== -1) continue;
     const dx = e.x - px, dy = e.y - py, dz = e.z - pz;
     const dist = Math.hypot(dx, dy, dz);
     if (dist > maxDist || dist < 4.0) continue;
@@ -316,6 +317,7 @@ function findBestLockTarget() {
   let bestScore = 99999;
 
   for (const e of enemies) {
+    if (lassoTargets.indexOf(e) !== -1) continue;
     const dx = e.x - px, dy = e.y - py, dz = e.z - pz;
     const dist = Math.hypot(dx, dy, dz);
     if (dist > maxDist || dist < 3.0) continue;
@@ -374,6 +376,69 @@ function hasObstacleBehindTarget(target, dirX, dirY, dirZ, bList) {
   return false;
 }
 
+// [올가미 스윙] 전원 포획 또는 전방 락온 부재 시 즉시 전방 자가 기폭 (소프트락 해소)
+let _lassoAllTiedNotified = false;
+
+function detonateLassoSelf(cdMult, overReset) {
+  const lassoSpec = getLassoSpec();
+  if (!lassoSpec || lassoTargets.length === 0) return false;
+
+  const tiedSnap = lassoTargets.slice();
+  lassoTargets = [];
+  _lassoAllTiedNotified = false;
+  const tiedCount = tiedSnap.length;
+
+  let lassoPtsSnap = null;
+  if (tiedCount >= 6 && getLv('lasso_swing') >= 3) {
+    lassoPtsSnap = [];
+    for (let k = 0; k < tiedSnap.length; k++) {
+      lassoPtsSnap.push({ x: tiedSnap[k].x, y: tiedSnap[k].y, z: tiedSnap[k].z });
+    }
+  }
+
+  const fSin = Math.sin(camYaw), fCos = Math.cos(camYaw);
+  const detX = px + fSin * 16.0;
+  const detY = Math.max(8.0, py + 1.5);
+  const detZ = pz + fCos * 16.0;
+
+  isSwinging = false;
+  inPerfectWindow = false;
+  isGliding = false;
+  isDiving = false;
+  autoCatchAfterJump = false;
+  strikeCooldown = overReset ? 0.0 : (0.28 * cdMult);
+  strikeGraceTimer = Math.max(strikeGraceTimer, 0.35);
+
+  const awakened = tiedCount >= lassoSpec.awakenCount;
+  const boomR = (52.0 + tiedCount * 7.0) * (awakened ? 1.5 : 1.0);
+  const boomDmg = Math.round(tiedCount * lassoSpec.detonatePer * (awakened ? 1.35 : 1.0));
+  const boomCol = awakened ? PAL.GOLD : '#a78bfa';
+
+  for (let k = 0; k < tiedSnap.length; k++) {
+    const te = tiedSnap[k];
+    if (enemies.indexOf(te) === -1) continue;
+    te.x = detX + (Math.random() - 0.5) * 6.0;
+    te.y = detY + (Math.random() - 0.5) * 6.0;
+    te.z = detZ + (Math.random() - 0.5) * 6.0;
+    applyEnemyDamage(te, boomDmg, boomCol, awakened, 0, false);
+  }
+
+  triggerShockwave(detX, detY, detZ, Math.min(160.0, boomR), boomDmg, boomCol, null, 0);
+  spawnExplosion(detX, detY, detZ, awakened ? PAL.GOLD : '#d8b4fe', '#ffffff', awakened ? 22 : 14);
+  vy = Math.max(vy, awakened ? 46.0 : 28.0);
+  shakeMag = Math.max(shakeMag, awakened ? 6.0 : 4.2);
+  addPopup('LASSO SNAP BOOM x' + tiedCount + '!!', awakened ? PAL.GOLD : '#d8b4fe', 3);
+
+  if (tiedCount >= 6 && getLv('lasso_swing') >= 3) {
+    const apexTriggered = tryTriggerApexCut('lasso_swing', {
+      targetPt: { x: detX, y: detY, z: detZ },
+      lassoPts: lassoPtsSnap
+    });
+    if (apexTriggered) hitStopTimer = 0.0;
+  }
+  return true;
+}
+
 function onStrikePress() {
   if (augmentDraftOpen) { confirmAugment(draftCursor); return; }
   if (gameOver) { resetGame(); return; }
@@ -396,6 +461,9 @@ function onStrikePress() {
 
   if (caseType === 1) {
     const target = findCase1Target();
+    if (!target && lassoTargets.length > 0 && lassoTargets.length >= enemies.length) {
+      if (detonateLassoSelf(cdMult, overReset)) return;
+    }
     isSwinging = false;
     inPerfectWindow = false;
     isGliding = false;
@@ -424,8 +492,12 @@ function onStrikePress() {
     return;
   }
 
-  const target = homingTarget || findBestLockTarget();
+  let target = homingTarget || findBestLockTarget();
+  if (target && lassoTargets.indexOf(target) !== -1) {
+    target = findBestLockTarget();
+  }
   if (!target) {
+    if (lassoTargets.length > 0 && detonateLassoSelf(cdMult, overReset)) return;
     addPopup('NO TARGET', '#94a3b8', 1);
     return;
   }
@@ -751,10 +823,19 @@ function updateCombat(dt, oldX, oldY, oldZ, bList, totalSpeed) {
         if (e.tier === 'ELITE' || e.tier === 'BOSS' || lassoTargets.indexOf(e) !== -1) continue;
         if (Math.hypot(e.x - px, e.y - py, e.z - pz) <= lassoSpec.radius + e.radius) {
           lassoTargets.push(e);
-          spawnSparks(e.x, e.y, e.z, '#a78bfa', 6, 20);
-          addPopup('TIED ' + lassoTargets.length + '/' + lassoSpec.maxTied, lassoTargets.length >= lassoSpec.awakenCount ? PAL.GOLD : '#d8b4fe', 1);
+          spawnSparks(e.x, e.y, e.z, '#ffffff', 6, 20);
+          if (!(enemies.length > 0 && lassoTargets.length >= enemies.length)) {
+            addPopup('TIED ' + lassoTargets.length + '/' + lassoSpec.maxTied, lassoTargets.length >= lassoSpec.awakenCount ? PAL.GOLD : '#d8b4fe', 1);
+          }
         }
       }
+    }
+    const allEnemiesTiedNow = (lassoTargets.length > 0 && enemies.length > 0 && lassoTargets.length >= enemies.length);
+    if (allEnemiesTiedNow && !_lassoAllTiedNotified) {
+      _lassoAllTiedNotified = true;
+      addPopup('ALL TIED! PRESS STRIKE!', PAL.GOLD, 2);
+    } else if (!allEnemiesTiedNow) {
+      _lassoAllTiedNotified = false;
     }
   }
 
@@ -772,19 +853,45 @@ function updateCombat(dt, oldX, oldY, oldZ, bList, totalSpeed) {
 
     const tiedIdx = lassoTargets.indexOf(e);
     if (tiedIdx !== -1) {
-      // 올가미로 포획된 적은 초경량 Lerp로 플레이어 뒤쪽 궤적을 따라 끌려옴 (독립 AI·원거리 사격·몸통 피격 정지)
-      const trailDist = 14.0 + (tiedIdx % 4) * 5.5;
+      // 초경량 관성 밧줄: 고속 스윙 시 시야 뒤로 팽팽하게 끌려오다 감속·선회 시 관성으로 옆/앞으로 밀려 나옴
+      const trailDist = 11.0 + (tiedIdx % 4) * 3.2;
       const sideSign = (tiedIdx & 1) ? 1 : -1;
-      const sideMag = 4.5 + Math.floor(tiedIdx / 2) * 2.5;
+      const sideMag = 2.8 + Math.floor(tiedIdx / 2) * 2.0;
       const rightX = backCos, rightZ = -backSin;
       const gx = px - backSin * trailDist + rightX * sideSign * sideMag;
-      const gy = Math.max(8.0, py - 3.0 - (tiedIdx % 3) * 2.2);
+      const gy = Math.max(7.0, py - 2.2 - (tiedIdx % 3) * 1.8);
       const gz = pz - backCos * trailDist + rightZ * sideSign * sideMag;
-      const lerpT = Math.min(1.0, 9.5 * dt);
-      e.x += (gx - e.x) * lerpT;
-      e.y += (gy - e.y) * lerpT;
-      e.z += (gz - e.z) * lerpT;
-      e.vx = vx; e.vy = vy; e.vz = vz;
+
+      const kSpring = 15.0;
+      const damp = Math.max(0.0, 1.0 - 3.4 * dt);
+      e.vx = (e.vx + (gx - e.x) * kSpring * dt) * damp;
+      e.vy = (e.vy + (gy - e.y) * kSpring * dt) * damp;
+      e.vz = (e.vz + (gz - e.z) * kSpring * dt) * damp;
+      e.x += e.vx * dt;
+      e.y += e.vy * dt;
+      e.z += e.vz * dt;
+
+      const rdx = e.x - px, rdy = e.y - py, rdz = e.z - pz;
+      const maxRope = 28.0 + (tiedIdx % 4) * 3.0;
+      const rDistSq = rdx * rdx + rdy * rdy + rdz * rdz;
+      if (rDistSq > maxRope * maxRope) {
+        const rDist = Math.sqrt(rDistSq) || 1.0;
+        const nx = rdx / rDist, ny = rdy / rDist, nz = rdz / rDist;
+        const excess = rDist - maxRope;
+        const pullStep = Math.min(excess, Math.max(180.0, totalSpeed * 1.6) * dt);
+        e.x -= nx * pullStep;
+        e.y = Math.max(5.0, e.y - ny * pullStep);
+        e.z -= nz * pullStep;
+        const relOut = (e.vx - vx) * nx + (e.vy - vy) * ny + (e.vz - vz) * nz;
+        if (relOut > 0.0) {
+          e.vx -= nx * relOut;
+          e.vy -= ny * relOut;
+          e.vz -= nz * relOut;
+        }
+      } else if (e.y < 5.0) {
+        e.y = 5.0;
+        if (e.vy < 0) e.vy *= -0.3;
+      }
       if (e.hitFlash > 0) e.hitFlash -= dt;
       continue;
     }

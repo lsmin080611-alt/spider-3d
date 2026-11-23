@@ -765,7 +765,8 @@ function tick(now) {
     const previewCase = strikeMode !== 0 ? strikeMode : classifyStrikeCase();
     const curSpdNow = Math.hypot(vx, vy, vz);
     const isInstantNow = (previewCase === 3 && curSpdNow >= STRIKE_NO_FREEZE_SPEED);
-    const hasLock = (!!homingTarget || previewCase === 1) && !gameOver && !augmentDraftOpen && openingPhase === 'ACTIVE';
+    const canLassoSelfSnap = (typeof getLassoSpec === 'function' && !!getLassoSpec() && lassoTargets.length > 0);
+    const hasLock = (!!homingTarget || previewCase === 1 || canLassoSelfSnap) && !gameOver && !augmentDraftOpen && openingPhase === 'ACTIVE';
     btnStrike.classList.remove('locked', 'case1', 'case3');
     if (augmentDraftOpen) {
       if (draftLockTimer > 0) {
@@ -788,11 +789,14 @@ function tick(now) {
       strikeBtnSub.textContent = 'SWING FIRST';
     } else if (hasLock) {
       if (previewCase === 1) btnStrike.classList.add('case1');
-      else if (isInstantNow) btnStrike.classList.add('locked');
+      else if (isInstantNow || (!homingTarget && canLassoSelfSnap)) btnStrike.classList.add('locked');
       else btnStrike.classList.add('case3');
       if (strikeMode !== 0) {
         strikeBtnLabel.textContent = strikePhase === 'HANG_SHOOT' ? 'SNAP!!' : (isChainRush ? 'CHAIN!!' : 'STRIKE!');
         strikeBtnSub.textContent = strikeMode === 1 ? 'C1 SLAM' : (isChainRush ? 'PINBALL' : 'C3 YANK');
+      } else if (!homingTarget && canLassoSelfSnap && (previewCase !== 1 || lassoTargets.length >= enemies.length)) {
+        strikeBtnLabel.textContent = 'LASSO!';
+        strikeBtnSub.textContent = 'SNAP BOOM';
       } else if (previewCase === 1) {
         strikeBtnLabel.textContent = 'SLAM!';
         strikeBtnSub.textContent = homingTarget ? 'C1 LOCK' : 'C1 DIVE';

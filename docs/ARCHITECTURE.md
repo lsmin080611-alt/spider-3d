@@ -56,7 +56,7 @@
 - **`js/boss.js`:** `resetBossState`, `spawnBossMines`, `spawnBossEscorts`, `spawnBossSynergyDrones`, `startBossEvadeTurn`, `startBossGroggyTurn`, `onRunTimerZero`, `updateBossSystem`
 - **`js/cutscene.js`:** `isOpeningCutscene`, `isOpeningActive`, `handleOpeningAnyInput`, `completeOpeningCatch`, `updateOpeningCutscene`, `resetApexCutState`, `isApexFreezePhase`, `isApexAct2Phase`, `tryTriggerApexCut`, `triggerApexTestCycle`, `updateApexCutFreeze`, `applyApexReleaseCamera`
 - **`js/physics.js`:** `getInputs`, `findWallAnchor`, `startWebSwing`, `onSwingDown`, `onSwingUp`, `handleBuildingsCollisionAndProximity`
-- **`js/combat.js`:** `applyEnemyDamage`, `triggerShockwave`, `classifyStrikeCase`, `getSpeedDamageMult`, `computeStrikeDamage`, `findCase1Target`, `findBestLockTarget`, `findNextChainTarget`, `hasObstacleBehindTarget`, `onStrikePress`, `updateEnemyMovementAI`, `updateCombat`
+- **`js/combat.js`:** `applyEnemyDamage`, `triggerShockwave`, `classifyStrikeCase`, `getSpeedDamageMult`, `computeStrikeDamage`, `findCase1Target`, `findBestLockTarget`, `findNextChainTarget`, `hasObstacleBehindTarget`, `detonateLassoSelf`, `onStrikePress`, `updateEnemyMovementAI`, `updateCombat`
 - **`js/renderer.js`:** `getCameraPos`, `makeCamBasis`, `projectWorldPt`, `drawClippedPoly3D`, `drawClippedLine3D`, `drawLightning3D`, `drawPC98Building`, `drawEnemy3D`, `drawBossHazards3D`, `drawSpiderManSprite`, `renderWorld3D`
 - **`js/hud.js`:** `drawEnemyRadarHUD`, `drawOffscreenEnemyMarkers`, `renderHUD`
 - **`js/main.js`:** `tick`, `setupControls`, `initApp`
@@ -70,7 +70,7 @@
 - [x] `game.js` 역할별 9개 모듈(`js/*.js`) 분리 리팩토링 (토큰 절감 & C++ 1:1 포팅 대비)
 - [x] Step 5: 초경량 수동 부저 칩튠 사운드 엔진 (`js/audio.js` — ESP32 `ledcWriteTone` 1:1 단음 SFX 22종 + 1채널 BGM)
 - [ ] 플레이테스트 피드백 4-트랙 개선 (`docs/BACKLOG.md` §1, `1대화 = 1트랙`)
-  - [ ] Track 1: 올가미 소프트락 수정 & 트레일·HUD 카운터 가시화 (#1, #2)
+  - [x] Track 1: 올가미 소프트락 해소(`LASSO SNAP BOOM!`) · 관성 밧줄 & 흰색 3D 클리핑 거미줄 · `LASSO` 픽셀 슬롯 HUD (#1, #2)
   - [ ] Track 2: 스윙 줄당김 상승(+25~30%) · 활강 상승 버그 수정 · 저고도 고속 스윙 (#3, #4, #6)
   - [ ] Track 3: Shift 직전 속도 기준 엄수 · 연타 봉인 · `연속 돌격` 저스트 리듬 리워크 · 4단계 타격 피드백 (#7, #9, #10, #11)
   - [ ] Track 4: 속도 비례 벽/바닥(추락사) · 적/보스 데미지 상향 · 보스 독립 아레나 순항 AI (#5, #8)

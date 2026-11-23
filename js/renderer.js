@@ -1386,22 +1386,29 @@ function renderWorld3D(isFrozen, nearbyBlocks, nearbyBuildings, nearbyClouds, ne
     }
   }
 
-  // [올가미 스윙] 포획된 적 연결 1px 초경량 벡터 선분 (4명+ 각성 시 황금색 강조)
+  // [올가미 스윙] 3D 근평면 클리핑 흰색 거미줄 선분 (카메라 뒤쪽 포획 적까지 끊김 없이 표시, 4명+ 각성 시 금색 점멸)
   if (lassoTargets.length > 0 && handPos) {
     const lSpecDraw = getLassoSpec();
     const lassoAwaken = lSpecDraw && lassoTargets.length >= lSpecDraw.awakenCount;
     const lassoCol = lassoAwaken
-      ? ((Math.floor(simTime * 22) & 1) ? PAL.GOLD : '#ffffff')
-      : '#d8b4fe';
-    ctx.lineWidth = 1;
+      ? ((Math.floor(simTime * 20) & 1) ? PAL.GOLD : '#ffffff')
+      : '#ffffff';
+    const is3rdView = (thirdPerson || openingCamBlend > 0.01 || apexCamBlend > 0.01);
+    const pOrigin = is3rdView
+      ? [px, py - 0.5, pz]
+      : [px + cb.sinY * 1.4, py - 0.85, pz + cb.cosY * 1.4];
     for (let i = 0; i < lassoTargets.length; i++) {
       const te = lassoTargets[i];
+      const ePt3 = [te.x, te.y, te.z];
+      drawClippedLine3D(pOrigin, ePt3, cb, PAL.INDIGO_OUTLINE, lassoAwaken ? 2.6 : 2.2);
+      drawClippedLine3D(pOrigin, ePt3, cb, lassoCol, lassoAwaken ? 1.4 : 1.15);
       const ep = projectWorldPt(te.x, te.y, te.z, cb);
-      if (!ep) continue;
-      ctx.strokeStyle = PAL.INDIGO_OUTLINE;
-      ctx.beginPath(); ctx.moveTo(handPos.x | 0, (handPos.y + 1) | 0); ctx.lineTo(ep.x | 0, (ep.y + 1) | 0); ctx.stroke();
-      ctx.strokeStyle = lassoCol;
-      ctx.beginPath(); ctx.moveTo(handPos.x | 0, handPos.y | 0); ctx.lineTo(ep.x | 0, ep.y | 0); ctx.stroke();
+      if (ep) {
+        ctx.fillStyle = PAL.INDIGO_OUTLINE;
+        ctx.fillRect((ep.x - 2) | 0, (ep.y - 2) | 0, 4, 4);
+        ctx.fillStyle = lassoCol;
+        ctx.fillRect((ep.x - 1) | 0, (ep.y - 1) | 0, 2, 2);
+      }
     }
   }
 
