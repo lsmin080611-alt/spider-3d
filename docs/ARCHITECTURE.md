@@ -1,60 +1,72 @@
-# Spider 3D — 코드 아키텍처, 하드웨어 사양 & 개발 워크플로우
+# Spider 3D — 코드 아키텍처 & 컨텍스트 지도
 
-> **목적:** 새 대화나 기능 수정 시 AI가 매번 긴 과거 채팅을 뒤지지 않고, 파일 구조·하드웨어 제약·협업 규칙을 즉시 파악하도록 유지하는 프로젝트 지도(`ARCHITECTURE.md`)입니다.
+> **목적:** 새 대화 시작 시 이 파일 1개만 읽어 하드웨어 제약·파일 구조·`SPEC.md` 섹션 목차·코드 심볼 위치를 즉시 파악하기 위한 경량 프로젝트 지도. (불변 규칙·협업 프로토콜은 `AGENTS.md` 참조)
 
 ---
 
-## 1. 타겟 하드웨어 사양 (LILYGO T-Display-S3)
+## 1. 타겟 하드웨어 제약 (LILYGO T-Display-S3)
 - **MCU / 메모리:** ESP32-S3 (512KB SRAM + **8MB PSRAM**)
-- **디스플레이:** 1.9인치 ST7789 컬러 LCD, 가로 해상도 **320×170** (총 54,400px, 16-bit RGB565 프레임버퍼 108.8KB)
-- **통신 인터페이스:** **8-bit 8080 병렬 인터페이스** 직결 (일반 SPI 대비 고속 전송, 60~100fps 구동 가능)
-- **물리 조작계:**
-  - 외장 아날로그 조이스틱: `GPIO 1`, `GPIO 2`
-  - 내장 택타일 버튼 2개: `GPIO 14` (SWING), `GPIO 0` (STRIKE / 보조)
-- **투명화 규칙 (ESP32 이식 시):** 알파 채널 PNG 대신 크로마키(`TFT_MAGENTA` `#FF00FF` 또는 단색 키) + `TFT_eSPI`의 `pushSprite(x, y, transparentColor)` 활용.
+- **디스플레이:** 1.9" ST7789 **320×170** 가로 LCD (RGB565 프레임버퍼 108.8KB, 8-bit 8080 병렬 직결, 60fps 목표)
+- **물리 조작계:** 외장 아날로그 조이스틱(`GPIO 1/2`), 택타일 버튼 2개(`GPIO 14` SWING, `GPIO 0` STRIKE)
+- **렌더링·투명화:** 알파 블러/실시간 셰이더 배제, 크로마키(`TFT_MAGENTA` `#FF00FF`) + `TFT_eSPI::pushSprite()` 기반, HTML 갱신 시 중첩 템플릿 리터럴 `innerHTML` 대신 `textContent`/`className` 사용
 
 ---
 
-## 2. 웹 프로토타입 파일 구조
-현재 HTML5 Canvas(320×170 `image-rendering: pixelated`) 기반으로 PC/모바일 브라우저에서 프로토타이핑 중.
+## 2. 웹 프로토타입 파일 구조 (`index.html` 순차 `<script>` 로드)
+1. `index.html` — 320×170 Canvas, T-Display-S3 프레임, 순차 스크립트 로드
+2. `style.css` — 기기 베젤, 가상 조이스틱(`#joy-zone`), 2버튼 모바일 반응형
+3. `assets.js` — PC-98 팔레트, 베이어/벽돌 패턴, 2번 구름, 5종 360° 파노라마, 18종 스파이더맨·랭크 스프라이트
+4. `augments.js` — 13종 증강 데이터, 4슬롯·Lv.1~3 스펙, `augLevels`, `resetAugments()`, `getAugStats()`, 드래프트 UI(`draftLockTimer`)·HUD
+5. `game.js` — 진자 웹 스윙 물리, 3-Case STRIKE, 5단계 스타일 랭크, 6분 타이머/XP, 보스전, 오프닝·APEX CUT 컷신, 3D 투영 렌더링, 메인 루프
 
-### 현재 5파일 분리 구조 (로컬 더블클릭 실행용)
-> CORS 에러 방지를 위해 `type="module"` 대신 일반 `<script src="...">` 순서 로드를 사용.
-1. `index.html` — 화면 뼈대, T-Display-S3 프레임, 스크립트 순차 로드
-2. `style.css` — 기기 베젤, 가상 조이스틱, 2버튼 택타일 레이아웃, 모바일 반응형
-3. `assets.js` — PC-98 팔레트, **2번 구름** 픽셀 배열, 360° 파노라마, 건물 타일, 스파이더맨 스프라이트
-4. `augments.js` — 증강 데이터, `augLevels`, `getAugStats()`(if문 기반 중앙 스탯 계산), `openAugmentDraft()`, `draftLockTimer`, 320×170 카드 선택 UI
-5. `game.js` — 웹 스윙 진자 물리, 3-Case STRIKE 전투, XP/티어 스폰, 3D 투영 렌더링, 메인 루프 (`initApp()`)
-
-### 향후 리팩토링 목표 구조 (파일당 200~300줄 제한 / C++ 포팅 대비)
-`game.js`가 비대해질 경우 아래 단위로 분리하여 PlatformIO(`.h`/`.cpp`) 1:1 이식 준비:
-- `config.js` (밸런스 상수) / `state.js` (공유 상태) / `physics.js` (스윙·충돌) / `combat.js` (STRIKE·적·XP) / `augments.js` / `renderer.js` (3D 투영·PC-98 HUD) / `main.js` (입력·루프)
+> **향후 리팩토링 목표 (C++ 1:1 이식 & 토큰 절감):** `game.js`를 `config / state / physics / combat / boss / cutscene / renderer / hud / main` 단위로 분리.
 
 ---
 
-## 3. 코드 수정 시 절대 깨지면 안 되는 규칙 (Invariants)
-1. **생략(`// ... existing code ...`) 금지:** 함수나 파일을 교체할 때 핵심 변수(`augLevels`, `shockwaves`, `augmentDraftOpen`, `resetAugments()`, `getAugStats()`)가 누락되어 초기화 검은 화면 오류가 나지 않도록 주의.
-2. **HTML 문자열 인젝션 주의:** 프리뷰 파싱 오류(`SyntaxError`) 방지를 위해 `innerHTML` 내 중첩 템플릿 리터럴 대신 `textContent`/`className` 갱신 사용.
-3. **바닥 충돌 방어 유지:** `py <= 4.0~5.0` 구간에서 스윙 강제 해제 및 `vy` 상한 유지 (로켓 사출 버그 재발 방지).
-4. **증강 오입력 방지 유지:** 증강 선택 화면에서 `SWING(SPACE)` 확정 금지 + `0.65초` 잠금 타이머 유지.
+## 3. `docs/SPEC.md` 섹션 목차 (부분 읽기용 인덱스)
+*(전체 읽기 대신 작업 영역의 줄 범위만 부분 읽기 — 줄 번호 변동 시 `rg -n "^##" docs/SPEC.md`로 확인)*
+
+| 영역 | 섹션 | 대략 위치 |
+| :--- | :--- | :--- |
+| 개요·타겟·조작계 | `§1. 게임 개요 & 핵심 정체성` | `L7~16` |
+| 웹 스윙 물리·도시·5-Cut 옥상 오프닝·바닥 방어 | `§2. 웹 스윙 물리 & 도시 이동 규칙` | `L18~50` |
+| 수동 3-Case STRIKE·통합 속도 데미지 | `§3-1. 속도·에너지 기반 3가지 STRIKE 분기` | `L54~67` |
+| 5단계 스타일 랭크(`D~S`)·배경/화력 연동 | `§3-2. 5단계 스타일 랭크` | `L68~81` |
+| 6분 타이머·순수 전투 XP·적 티어/AI·화면 밖 마커 | `§3-3. 적 티어·배치 AI, 6분 타이머 & XP` | `L82~94` |
+| 6분 보스전(`OMEGA SOVEREIGN` 회피/그로기 턴) | `§3-4. 6분(00:00) 보스전 루프` | `L95~106` |
+| 증강 4슬롯·Lv.1~3·13종 로스터·오입력 방지 | `§4-1 ~ §4-3. 로그라이크 증강 시스템` | `L110~139` |
+| Lv.3 `APEX CUT` 6종 3.0초 3-Act 불릿타임 3D 컷씬 | `§4-4. [Step 4] APEX CUT` | `L140~155` |
+| PC-98 도트 비주얼·2번 구름·18종 스프라이트·60fps | `§5. PC-98 빈티지 도트 비주얼` | `L158~165` |
 
 ---
 
-## 4. 폰·웹 채팅 협업 규칙
-- **1대화 = 1기능:** 한 번에 1가지 기능/밸런스만 수정 후 즉시 테스트.
-- **부분 패치 원칙:** 전체 HTML 출력 대신 **"수정할 함수 1개 통째로"** 또는 **"기존 코드 A → 바꿀 코드 B (Diff)"** 형식으로 요청.
-- **세이브 포인트 관리:** 정상 작동이 확인된 최신 코드 버전은 이 노트북에 `[코드세이브] vX.X_기능명` 형태의 마크다운 소스로 별도 보관.
+## 4. 심볼 기반 코드 지도 (편집 전 `rg`로 정확한 줄 위치 확인)
+
+### `game.js`
+- **상태·이펙트·데미지·스타일 랭크** (`~L1~482`): `applyEnemyDamage`, `triggerShockwave`, `syncStageFromStyleRank`, `addStylePoints`, `dropStyleRanks`
+- **보스전 (`OMEGA SOVEREIGN`)** (`~L483~945`): `resetBossState`, `spawnBossMines`, `spawnBossEscorts`, `spawnBossSynergyDrones`, `startBossEvadeTurn`, `startBossGroggyTurn`, `onRunTimerZero`, `updateBossSystem`
+- **피격·올가미·도시 생성·웨이브·오프닝 상태** (`~L946~1382`): `clearStrikeState`, `releaseLassoTargets`, `takeDamage`, `getBlockData`, `getNearbyWorld`, `spawnWave`, `handleOpeningAnyInput`, `completeOpeningCatch`, `resetGame`
+- **Lv.3 `APEX CUT` 3-Act 3D 컷씬** (`~L1383~2004`): `resetApexCutState`, `isApexFreezePhase`, `isApexAct2Phase`, `tryTriggerApexCut`, `triggerApexTestCycle`, `updateApexCutFreeze`, `applyApexReleaseCamera`
+- **STRIKE 판정·웹 스윙·건물 충돌** (`~L2005~2712`): `classifyStrikeCase`, `getSpeedDamageMult`, `computeStrikeDamage`, `onStrikePress`, `findWallAnchor`, `startWebSwing`, `onSwingDown`, `onSwingUp`, `handleBuildingsCollisionAndProximity`
+- **적 AI·전투 엔진** (`~L2713~3380`): `updateEnemyMovementAI`, `updateCombat`
+- **3D 카메라·투영·렌더러·레이더/마커** (`~L3381~4255`): `getCameraPos`, `projectWorldPt`, `drawPC98Building`, `drawEnemy3D`, `drawBossHazards3D`, `drawEnemyRadarHUD`, `drawOffscreenEnemyMarkers`, `drawSpiderManSprite`
+- **오프닝 컷신·메인 루프·프레임 렌더** (`~L4256~6445`): `updateOpeningCutscene`, `tick` (내부 `3. RENDER` 블록 `~L5343~6445`)
+- **입력·초기화** (`~L6446~6656`): `setupControls`, `initApp`
+
+### `augments.js`
+- **로스터·스펙 헬퍼** (`~L1~354`): `AUGMENTS`, `getLv`, `getOwnedAugmentCount`, `get*Spec()`
+- **XP·초기화·중앙 스탯** (`~L355~468`): `getXpRequirement`, `gainXp`, `resetAugments`, `getAugStats`
+- **드래프트·UI·HUD** (`~L472~818`): `openAugmentDraft`, `confirmAugment`, `drawAugmentDraftUI`, `drawActiveAugmentsHUD`
+
+### `assets.js`
+- **팔레트·베이어/벽돌 패턴** (`~L1~288`): `PAL`, `STAGE_THEMES`, `bakeAllStagePatterns`
+- **2번 구름·360° 파노라마** (`~L289~625`): `bakeCloud2Sprite`, `bakePanoramaStrip`
+- **캐릭터 18종·프롭·랭크 엠블럼** (`~L626~1228`): `bakeAllSpideySprites`, `bakePropSprites`, `bakeStyleRankSprites`
 
 ---
 
-## 5. 현재 진행 현황 & 다음 마일스톤 (Roadmap)
-- [x] 3D 진자 웹 스윙 물리 (U-Swing, Apex Float, 바닥 로켓 버그 수정, 650m 고도)
-- [x] PC-98 빈티지 디더링 리마스터 & 2번 구름 통일 & 360° 파노라마
-- [x] 2버튼(SWING/STRIKE) 3-Case 전투 & 후방 공간 판정
-- [x] 실력 기반 XP 레벨업 & 초반 2단계 몹 가속 원샷 밸런스
-- [x] 유기적 증강 + 기믹 증강 구조 & 0.65초 오입력 방지
-- [x] 스윙 궤적 전방 적 요격 유입, 고도층 분리, 다이브·저공 시점 보강 및 화면 밖 적 방향 마커
-- [ ] 최신 정상 작동 코드 전문을 노트북 `[코드세이브]` 소스로 백업
-- [ ] 점수 연동 시간대 변화(낮→노을→야경 팔레트 스왑) 검토
-- [ ] 초경량 칩튠 효과음(WebAudio → 추후 ESP32 피에조 부저/스피커) 추가
+## 5. 진행 현황 & 남은 마일스톤
+- [x] 웹 프로토타입 코어 완성 (진자 물리·PC-98 비주얼·3-Case STRIKE·4슬롯 Lv.1~3 증강 13종·Step 1~4: 5단계 스타일 랭크/6분 타이머, 5-Cut 옥상 오프닝, 6분 보스전, Lv.3 `APEX CUT` 6종)
+- [ ] `game.js` 역할별 모듈 분리 리팩토링 (토큰 절감 & C++ 1:1 포팅 대비)
+- [ ] 초경량 칩튠 효과음 (WebAudio → 추후 ESP32 피에조 부저/스피커)
 - [ ] LILYGO T-Display-S3 (PlatformIO + `TFT_eSPI`) C++ 포팅 및 실기기 60fps 검증
