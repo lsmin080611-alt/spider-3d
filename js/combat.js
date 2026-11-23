@@ -59,7 +59,10 @@ function applyEnemyDamage(e, dmg, col, isCrit = false, dominoDepth = 0, showOneS
     }
 
     spawnSparks(e.x, e.y, e.z, bossPhase === 'GROGGY' ? PAL.GOLD : col, 8, 28);
-    if (typeof playSfx === 'function') playSfx(bossCrit ? 'hit_crit' : 'hit', bossPhase === 'GROGGY' ? 1.2 : 0.92);
+    if (typeof playSfx === 'function') {
+      const bSfx = bossCrit ? 'hit_crit' : ((finalDmg >= 65 || strikeMode === 1) ? 'hit_heavy' : 'hit');
+      playSfx(bSfx, bossPhase === 'GROGGY' ? 1.18 : 0.94);
+    }
     return false;
   }
 
@@ -118,7 +121,10 @@ function applyEnemyDamage(e, dmg, col, isCrit = false, dominoDepth = 0, showOneS
     return true;
   } else {
     spawnSparks(e.x, e.y, e.z, col, 6, 22);
-    if (typeof playSfx === 'function') playSfx(isCrit ? 'hit_crit' : 'hit', 1.0 + Math.min(0.35, finalDmg / 180));
+    if (typeof playSfx === 'function') {
+      const hSfx = isCrit ? 'hit_crit' : ((finalDmg >= 65 || strikeMode === 1) ? 'hit_heavy' : 'hit');
+      playSfx(hSfx, 0.96 + Math.min(0.32, finalDmg / 200));
+    }
     return false;
   }
 }

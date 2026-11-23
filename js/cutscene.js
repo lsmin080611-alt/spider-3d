@@ -817,7 +817,10 @@ function updateApexCutFreeze(rawDt) {
   if (!apexAct2Started) {
     apexAct2Started = true;
     apexFlashTimer = 0.055; // 매치 컷 2프레임 임팩트 스냅
-    if (typeof playSfx === 'function') playSfx('apex_release');
+    if (typeof playSfx === 'function') {
+      const apexSfxId = (typeof SFX_TABLE !== 'undefined' && SFX_TABLE['apex_' + apexId]) ? ('apex_' + apexId) : 'apex_release';
+      playSfx(apexSfxId);
+    }
     const def = APEX_CUT_DEFS[apexId];
     const accCol = def ? def.col : PAL.GOLD;
     const tPt = (apexSceneExtras && apexSceneExtras.targetPt) ? apexSceneExtras.targetPt : { x: px, y: py, z: pz };

@@ -21,40 +21,49 @@ let sfxLastPlayMs = {};    // per-SFX cooldown map
 let bgmTrack = 'NONE';     // 'NONE' | 'SWING' | 'BOSS'
 let bgmStepIdx = 0;
 let bgmStepTimerMs = 0;
+let bgmGateTimerMs = 0;
 
 // =========================================================================
 // 1. PASSIVE BUZZER SFX NOTE TABLES ([freqHz, durMs], 0 = rest)
 // =========================================================================
 const SFX_TABLE = {
-  web_shoot:       { prio: 3,  cd: 65,  notes: [[520, 20], [780, 20], [1180, 26], [1560, 20]] },
-  web_release:     { prio: 3,  cd: 75,  notes: [[660, 22], [990, 24], [1320, 30]] },
-  perfect_release: { prio: 6,  cd: 120, notes: [[880, 28], [1109, 28], [1319, 34], [1760, 62]] },
-  jump:            { prio: 3,  cd: 75,  notes: [[330, 26], [494, 28], [659, 34]] },
-  bounce:          { prio: 4,  cd: 65,  notes: [[260, 20], [440, 22], [660, 26], [520, 20]] },
+  web_shoot:          { prio: 3,  cd: 65,  notes: [[520, 20], [780, 20], [1180, 26], [1560, 20]] },
+  web_release:        { prio: 3,  cd: 75,  notes: [[660, 22], [990, 24], [1320, 30]] },
+  perfect_release:    { prio: 6,  cd: 120, notes: [[880, 28], [1109, 28], [1319, 34], [1760, 62]] },
+  jump:               { prio: 3,  cd: 75,  notes: [[330, 26], [494, 28], [659, 34]] },
+  bounce:             { prio: 4,  cd: 65,  notes: [[260, 20], [440, 22], [660, 26], [520, 20]] },
 
-  strike_dive:     { prio: 5,  cd: 85,  notes: [[1175, 22], [880, 22], [587, 26], [392, 30], [262, 38]] },
-  strike_pull:     { prio: 5,  cd: 85,  notes: [[784, 22], [0, 12], [1175, 26], [1568, 36]] },
-  strike_hyper:    { prio: 6,  cd: 85,  notes: [[659, 18], [988, 18], [1319, 22], [1976, 46]] },
+  strike_dive:        { prio: 5,  cd: 85,  notes: [[1175, 22], [880, 22], [587, 26], [392, 30], [262, 38]] },
+  strike_pull:        { prio: 5,  cd: 85,  notes: [[784, 22], [0, 12], [1175, 26], [1568, 36]] },
+  strike_hyper:       { prio: 6,  cd: 85,  notes: [[659, 18], [988, 18], [1319, 22], [1976, 46]] },
 
-  hit:             { prio: 4,  cd: 42,  notes: [[240, 18], [147, 26]] },
-  hit_crit:        { prio: 5,  cd: 55,  notes: [[880, 16], [440, 20], [1319, 22], [220, 30]] },
-  enemy_kill:      { prio: 6,  cd: 58,  notes: [[523, 20], [392, 20], [294, 24], [196, 28], [131, 42]] },
-  shockwave:       { prio: 6,  cd: 85,  notes: [[165, 28], [123, 32], [98, 40], [73, 50]] },
+  hit:                { prio: 4,  cd: 42,  notes: [[310, 14], [185, 18], [118, 22]] },
+  hit_heavy:          { prio: 5,  cd: 55,  notes: [[440, 14], [220, 18], [131, 24], [82, 38]] },
+  hit_crit:           { prio: 5,  cd: 55,  notes: [[1175, 14], [880, 14], [1568, 22], [2093, 32]] },
+  enemy_kill:         { prio: 6,  cd: 58,  notes: [[523, 20], [392, 20], [294, 24], [196, 28], [131, 42]] },
+  shockwave:          { prio: 6,  cd: 85,  notes: [[165, 28], [123, 32], [98, 40], [73, 50]] },
 
-  rank_up:         { prio: 7,  cd: 180, notes: [[523, 38], [659, 38], [784, 42], [1047, 48], [1319, 92]] },
-  player_hit:      { prio: 8,  cd: 150, notes: [[311, 34], [233, 34], [175, 42], [117, 72]] },
+  rank_up:            { prio: 7,  cd: 180, notes: [[523, 38], [659, 38], [784, 42], [1047, 48], [1319, 92]] },
+  player_hit:         { prio: 8,  cd: 150, notes: [[311, 34], [233, 34], [175, 42], [117, 72]] },
 
-  draft_open:      { prio: 8,  cd: 140, notes: [[587, 42], [740, 42], [880, 48], [1175, 105]] },
-  ui_move:         { prio: 4,  cd: 38,  notes: [[988, 20]] },
-  ui_confirm:      { prio: 8,  cd: 100, notes: [[784, 34], [1047, 42], [1568, 82]] },
+  draft_open:         { prio: 8,  cd: 140, notes: [[587, 42], [740, 42], [880, 48], [1175, 105]] },
+  ui_move:            { prio: 4,  cd: 38,  notes: [[988, 20]] },
+  ui_confirm:         { prio: 8,  cd: 100, notes: [[784, 34], [1047, 42], [1568, 82]] },
 
-  boss_alarm:      { prio: 9,  cd: 250, notes: [[880, 75], [622, 75], [880, 75], [622, 75], [440, 130]] },
-  boss_groggy:     { prio: 9,  cd: 200, notes: [[1047, 34], [784, 34], [1319, 44], [1568, 52], [2093, 105]] },
-  boss_clear:      { prio: 10, cd: 300, notes: [[523, 68], [659, 68], [784, 68], [1047, 108], [0, 32], [784, 62], [1047, 210]] },
-  gameover:        { prio: 10, cd: 300, notes: [[392, 92], [370, 92], [349, 92], [330, 115], [262, 230]] },
+  boss_alarm:         { prio: 9,  cd: 250, notes: [[880, 75], [622, 75], [880, 75], [622, 75], [440, 130]] },
+  boss_groggy:        { prio: 9,  cd: 200, notes: [[1047, 34], [784, 34], [1319, 44], [1568, 52], [2093, 105]] },
+  boss_clear:         { prio: 10, cd: 300, notes: [[523, 68], [659, 68], [784, 68], [1047, 108], [0, 32], [784, 62], [1047, 210]] },
+  gameover:           { prio: 10, cd: 300, notes: [[392, 92], [370, 92], [349, 92], [330, 115], [262, 230]] },
 
-  apex_freeze:     { prio: 9,  cd: 180, notes: [[1568, 28], [1175, 32], [880, 38], [587, 46], [294, 66], [147, 125]] },
-  apex_release:    { prio: 9,  cd: 180, notes: [[220, 26], [440, 26], [880, 30], [1319, 34], [1760, 72], [220, 52]] }
+  // Step 4 Lv.3 APEX CUT: Time-stop freeze + 6 dedicated per-augment ultimate impact signatures
+  apex_freeze:        { prio: 9,  cd: 180, notes: [[1568, 28], [1175, 32], [880, 38], [587, 46], [294, 66], [147, 125]] },
+  apex_release:       { prio: 9,  cd: 180, notes: [[220, 26], [440, 26], [880, 30], [1319, 34], [1760, 72], [220, 52]] },
+  apex_heavy_suit:    { prio: 10, cd: 180, notes: [[880, 22], [440, 24], [220, 28], [110, 38], [73, 52], [62, 88]] },
+  apex_overdrive:     { prio: 10, cd: 180, notes: [[1976, 18], [2637, 18], [3136, 22], [0, 12], [1568, 20], [2349, 24], [3520, 64]] },
+  apex_bungee_web:    { prio: 10, cd: 180, notes: [[294, 20], [440, 20], [659, 22], [988, 24], [1480, 28], [2217, 68]] },
+  apex_web_lasso:     { prio: 10, cd: 180, notes: [[659, 22], [494, 22], [392, 26], [0, 18], [1319, 24], [988, 24], [659, 28], [196, 36], [110, 62]] },
+  apex_chain_pinball: { prio: 10, cd: 180, notes: [[784, 20], [0, 8], [988, 20], [0, 8], [1175, 20], [0, 8], [1397, 20], [0, 8], [1568, 22], [0, 8], [2093, 68]] },
+  apex_elastic:       { prio: 10, cd: 180, notes: [[185, 24], [131, 28], [0, 14], [1047, 20], [1760, 24], [1319, 22], [2349, 64]] }
 };
 
 // =========================================================================
@@ -135,7 +144,7 @@ function unlockAudio() {
   audioUnlocked = true;
 }
 
-function setBuzzerTone(freqHz, gainLevel) {
+function setBuzzerTone(freqHz, gainLevel, isBgm = false) {
   if (!audioCtx || !audioOsc || !audioGain) return;
   const now = audioCtx.currentTime;
   if (freqHz <= 0 || gainLevel <= 0) {
@@ -146,6 +155,10 @@ function setBuzzerTone(freqHz, gainLevel) {
     return;
   }
   const clampedFreq = Math.max(55, Math.min(4200, freqHz));
+  if (audioFilter) {
+    // Soften BGM harmonics (1500Hz) so it stays unobtrusive behind punchy SFX (3400Hz)
+    audioFilter.frequency.setTargetAtTime(isBgm ? 1500 : 3400, now, 0.005);
+  }
   audioOsc.frequency.setValueAtTime(clampedFreq, now);
   audioGain.gain.setTargetAtTime(gainLevel, now, 0.003);
   audioCurFreq = clampedFreq;
@@ -196,12 +209,13 @@ function playSfx(id, pitchScale = 1.0) {
   };
 
   const f0 = def.notes[0][0];
-  setBuzzerTone(f0 > 0 ? f0 * sfxActive.pitchScale : 0, 0.11);
+  setBuzzerTone(f0 > 0 ? f0 * sfxActive.pitchScale : 0, 0.11, false);
 }
 
 function resetAudioForNewRun() {
   bgmStepIdx = 0;
   bgmStepTimerMs = 0;
+  bgmGateTimerMs = 0;
   sfxActive = null;
   setBuzzerTone(0, 0);
 }
@@ -228,7 +242,7 @@ function updateAudio(rawDt) {
         const note = sfxActive.notes[sfxActive.idx];
         sfxActive.timerMs = note[1];
         const freq = note[0] > 0 ? note[0] * sfxActive.pitchScale : 0;
-        setBuzzerTone(freq, 0.11);
+        setBuzzerTone(freq, 0.11, false);
       }
     }
     return;
@@ -259,21 +273,31 @@ function updateAudio(rawDt) {
     bgmTrack = desiredTrack;
     bgmStepIdx = 0;
     bgmStepTimerMs = 0;
+    bgmGateTimerMs = 0;
   }
 
   const steps = bgmTrack === 'BOSS' ? BGM_BOSS_STEPS : BGM_SWING_STEPS;
   // Slightly faster tempo at Rank S (index 4) or Boss Phase 2
   const isHyperTempo = (bgmTrack === 'BOSS' && typeof bossStage !== 'undefined' && bossStage >= 2)
     || (bgmTrack === 'SWING' && typeof styleRankIdx !== 'undefined' && styleRankIdx >= 4);
-  const stepDurMs = bgmTrack === 'BOSS' ? (isHyperTempo ? 82 : 92) : (isHyperTempo ? 92 : 104);
+  const stepDurMs = bgmTrack === 'BOSS' ? (isHyperTempo ? 84 : 94) : (isHyperTempo ? 96 : 108);
+
+  // Staccato gate: cut BGM note after ~56% of step so it stays airy and gentle
+  if (bgmGateTimerMs > 0) {
+    bgmGateTimerMs -= dtMs;
+    if (bgmGateTimerMs <= 0 && audioCurFreq !== 0) {
+      setBuzzerTone(0, 0, true);
+    }
+  }
 
   bgmStepTimerMs -= dtMs;
   if (bgmStepTimerMs <= 0) {
     const freq = steps[bgmStepIdx];
     bgmStepIdx = (bgmStepIdx + 1) % steps.length;
     bgmStepTimerMs = stepDurMs;
-    // Soft volume for BGM so SFX preemption stands out clearly
-    const bgmGain = (typeof isApexAct2Phase === 'function' && isApexAct2Phase()) ? 0.025 : 0.048;
-    setBuzzerTone(freq, freq > 0 ? bgmGain : 0);
+    bgmGateTimerMs = freq > 0 ? stepDurMs * 0.56 : 0;
+    // Gentle background volume (0.016) so SFX clearly pop over the music
+    const bgmGain = (typeof isApexAct2Phase === 'function' && isApexAct2Phase()) ? 0.008 : 0.016;
+    setBuzzerTone(freq, freq > 0 ? bgmGain : 0, true);
   }
 }
