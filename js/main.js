@@ -277,8 +277,7 @@ function tick(now) {
       if (forwardInput > 0.15) {
         // 접선(진행) 방향 추진 펌핑 (상승 아크에서는 3D 진행 벡터로 상승 에너지 직접 전달)
         const curSpd3D = Math.hypot(vx, vy, vz);
-        const pushCap = isRisingArc ? (maxSwingSpd * 1.06) : maxSwingSpd;
-        if (curSpd3D < pushCap) {
+        if (curSpd3D < maxSwingSpd) {
           const pushAcc = forwardInput * (22.0 * aug.swingPushMult) * dt;
           if ((isRisingArc || vy > 0.0) && curSpd3D > 8.0) {
             vx += (vx / curSpd3D) * pushAcc;
@@ -296,10 +295,10 @@ function tick(now) {
           const prevRopeLen = ropeLen;
           ropeLen = Math.max(46.0, ropeLen - reelRate * reelIntensity * dt);
           const reeledDist = prevRopeLen - ropeLen;
-          // 최저점 통과 후 상승 구간 줄당김 펌프 (바닥 부근 py <= 10m에서는 로켓 사출 방지를 위해 비활성)
+          // 최저점 통과 후 상승 구간 줄당김 펌프 (총속력 상한 내에서 수평 에너지를 상승 고도로 전환, py <= 10m 비활성)
           if (reeledDist > 0.0 && isRisingArc && py > 10.0) {
             const spdNow = Math.hypot(vx, vy, vz);
-            const pumpCap = maxSwingSpd + 14.0;
+            const pumpCap = maxSwingSpd + 4.0;
             if (spdNow > 6.0 && spdNow < pumpCap) {
               const tanAdd = Math.min(reeledDist * 0.85 * aug.swingPushMult, pumpCap - spdNow);
               vx += (vx / spdNow) * tanAdd;
@@ -307,6 +306,17 @@ function tick(now) {
               vz += (vz / spdNow) * tanAdd;
             }
             vy += reeledDist * 0.65 * aug.bungeeBounce;
+            const postSpd = Math.hypot(vx, vy, vz);
+            if (postSpd > pumpCap) {
+              const hNow = Math.hypot(vx, vz);
+              const allowedH = Math.sqrt(Math.max(0.0, pumpCap * pumpCap - vy * vy));
+              if (hNow > 1.0 && allowedH < hNow) {
+                const targetH = Math.max(Math.min(hNow, pumpCap * 0.45), allowedH);
+                const hSc = targetH / hNow;
+                vx *= hSc;
+                vz *= hSc;
+              }
+            }
           }
         }
       } else if (forwardInput < -0.30) {
@@ -367,9 +377,9 @@ function tick(now) {
             // 직전 속력을 하드캡 없이 접선 방향으로 98.5% 보존
             targetSpd = speedAfter + (speedBefore - speedAfter) * 0.985;
           }
-          // 기본 순항 상한(maxSwingSpd) 초과 고속 구간은 공력 감쇠로 자연 수렴 (상승 아크에서는 감쇠 완화, 진공 활공 Lv.1 50%/Lv.2~3 0%)
+          // 기본 순항 상한(maxSwingSpd) 초과 고속 구간은 공력 감쇠로 자연 수렴 (상승 아크에서는 0.95/s, 진공 활공 Lv.1 50%/Lv.2~3 0%)
           if (targetSpd > maxSwingSpd && vacDrag > 0) {
-            const dragRate = (passedBottom && vy > 0.0) ? 0.55 : 1.35;
+            const dragRate = (passedBottom && vy > 0.0) ? 0.95 : 1.35;
             targetSpd -= (targetSpd - maxSwingSpd) * Math.min(1.0, dragRate * vacDrag * dt);
           }
           const sc = targetSpd / speedAfter;
@@ -482,6 +492,19 @@ function tick(now) {
       // [진공 활공 Lv.3 각성]: 고속(70+) 비행 중 초당 +8 자동 가속!
       if (lvVac >= 3 && curHSpd >= 70.0 && curHSpd < maxSwingSpd * 1.18) {
         curHSpd = Math.min(maxSwingSpd * 1.18, curHSpd + 8.0 * dt);
+      }
+
+      // 공중 3D 공력 종단 속도 (고공 낙하/다이브 시 노증강 SPD 폭주 방지 · 오버드라이브/번지/초중력/진공 활공 연동)
+      if (vacDrag > 0 && openingPhase !== 'DROP_CATCH') {
+        const airSpd = Math.hypot(curHSpd, vy);
+        const vertScale = vy > 0.0 ? aug.bungeeBounce : Math.sqrt(aug.gravityMult);
+        const maxAirSpd = (BASE_SWING_MAX_SPD + (isDiving ? 18.0 : 8.0)) * aug.maxSpeedMult * vertScale;
+        if (airSpd > maxAirSpd) {
+          const targetAirSpd = airSpd - (airSpd - maxAirSpd) * Math.min(1.0, 1.45 * vacDrag * dt);
+          const airSc = targetAirSpd / airSpd;
+          curHSpd *= airSc;
+          vy *= airSc;
+        }
       }
 
       const turnRate = (isGliding ? 1.65 : 0.95) * aug.turnMult;

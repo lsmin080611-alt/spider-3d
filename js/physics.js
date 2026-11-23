@@ -206,8 +206,8 @@ function onSwingUp() {
       if (wasPerfect) {
         const lvBung = getLv('bungee_web');
         hitStopTimer = 0.045;
-        const upwardKick = (13.0 + depthRatio * 9.0) * aug.bungeeBounce;
-        const targetVy = Math.min(96.0 * aug.bungeeBounce, vy + upwardKick);
+        const upwardKick = (12.0 + depthRatio * 8.0) * aug.bungeeBounce;
+        const targetVy = Math.min(88.0 * aug.bungeeBounce, vy + upwardKick);
         vy = Math.max(vy, targetVy);
 
         const curSpd = Math.hypot(vx, vy, vz);
@@ -216,6 +216,20 @@ function onSwingUp() {
         const fwdAdd = curSpd < softBoostCap ? Math.min(rawFwd, softBoostCap - curSpd) : 0.0;
         vx += sinY * fwdAdd;
         vz += cosY * fwdAdd;
+
+        // 릴리즈 직후 3D 총속력이 피크 상한 초과 시 상승(vy)을 보존하고 수평 성분만 정규화
+        const relSpd = Math.hypot(vx, vy, vz);
+        if (relSpd > softBoostCap) {
+          const hRel = Math.hypot(vx, vz);
+          const remSq = softBoostCap * softBoostCap - vy * vy;
+          if (remSq > 0.0 && hRel > 1.0) {
+            const targetH = Math.min(hRel, Math.max(hRel * 0.65, Math.sqrt(remSq)));
+            const hSc = targetH / hRel;
+            vx *= hSc;
+            vz *= hSc;
+          }
+        }
+
         perfectBuffTimer = 3.4;
         if (lvBung >= 3) {
           invulnTimer = Math.max(invulnTimer, 0.40);
@@ -239,8 +253,8 @@ function onSwingUp() {
           lastBungeeAnchorPt = prevAnchorPt;
         }
       } else {
-        const upwardKick = (8.0 + depthRatio * 7.5) * aug.bungeeBounce;
-        const targetVy = Math.min(78.0 * aug.bungeeBounce, vy + upwardKick);
+        const upwardKick = (7.5 + depthRatio * 6.5) * aug.bungeeBounce;
+        const targetVy = Math.min(73.0 * aug.bungeeBounce, vy + upwardKick);
         vy = Math.max(vy, targetVy);
 
         const curHSpd = Math.hypot(vx, vz);
@@ -248,6 +262,19 @@ function onSwingUp() {
           const fwdAdd = Math.min((3.0 + depthRatio * 4.0) * aug.swingPushMult, maxCruiseSpd - curHSpd);
           vx += sinY * fwdAdd;
           vz += cosY * fwdAdd;
+        }
+
+        const normalReleaseCap = (BASE_SWING_MAX_SPD + 6.0) * aug.maxSpeedMult;
+        const relSpd = Math.hypot(vx, vy, vz);
+        if (relSpd > normalReleaseCap) {
+          const hRel = Math.hypot(vx, vz);
+          const remSq = normalReleaseCap * normalReleaseCap - vy * vy;
+          if (remSq > 0.0 && hRel > 1.0) {
+            const targetH = Math.min(hRel, Math.max(hRel * 0.65, Math.sqrt(remSq)));
+            const hSc = targetH / hRel;
+            vx *= hSc;
+            vz *= hSc;
+          }
         }
 
         if (swingDepth > 55) {
@@ -264,7 +291,7 @@ function onSwingUp() {
     } else if (swingTimer > 0.10 && vy > 4.0) {
       // 짧은 스윙 이탈 시에도 가벼운 도약 보정
       const microKick = 7.0 * aug.bungeeBounce;
-      vy = Math.max(vy, Math.min(56.0 * aug.bungeeBounce, vy + microKick));
+      vy = Math.max(vy, Math.min(52.0 * aug.bungeeBounce, vy + microKick));
       doingFlip = true;
       flipAngle = 0.0;
     }
