@@ -141,16 +141,16 @@
 - **순수 연출 중심 (추가 딜·전투 이득 0 / 스킵 불가):** 이미 완벽한 플레이에 높은 속도 데미지/Lv.3 각성이 적용되므로 추가 화력 없이 **시점·움직임·모션·비마법적 3D 물리 이펙트·속도 대비**에만 집중.
 - **3-Act `3.00초` 구조:**
   - **Act 1 (`0.00~1.05s`, 완전 0% 시간정지 + 3D 시점 선회):** 2프레임 임팩트 스냅 후 캐릭터·적·거미줄·잔상·타이머(`runTimeRemaining`, `bossPhaseTimer`, `comboTimer`, `strikeRushTimer`, `perfectBuffTimer`, `bungeeApexTimer`)가 완전 정지한 상태에서 카메라만 3D 중심축을 **`70°~80°` 선회(Ease-Out Orbit)**하며 3차원 위치와 깊이감을 노출 (건물 관통 0% 자동 방향 선택 + `13px` 레터박스).
-  - **Act 2 (`1.05~2.05s`, 매치 컷 + `0.14x` 초슬로우 + 비마법적 3D 볼륨 물리 이펙트):** 확 다른 앵글(와이드/정면 저각/상공/벽면 오버-더-숄더)로 매치 컷 전환하며 **3D 볼륨 프리미티브**(`draw3DRibbonRing` 채워진 3D 원환 대역, `draw3DConeShell` 채워진 3D 음속 원뿔/깔때기, `draw3DThickBeam` 원근 테이퍼 3중 코어 빔, `draw3DDebrisChunks` 3D 물리 파편 비산)로 압도적 스케일 연출 (캐릭터 스프라이트는 볼륨 이펙트 위에 배치해 실루엣 선명도 유지).
+  - **Act 2 (`1.05~2.05s`, 매치 컷 + `0.14x` 초슬로우 + 비마법적 3D 물리 연출):** 다트판 링·원통을 배제하고 90년대 애니메이션/스파이더버스 감성의 **3중 코어 빔(`draw3DThickBeam`) · 십자 임팩트 섬광(`drawCrossFlash`) · 지그재그 균열선(`drawJaggedCrack3D`) · 다중 3D 잔상 · 구름 돌파 스윕 · 파편 비산(`draw3DDebrisChunks`)**으로 연출 (캐릭터 스프라이트는 이펙트 위에 배치해 실루엣 선명도 유지).
   - **Act 3 (`2.05~3.00s`, 100% 원속 재개 + 드라이브바이 지연 추격):** 시간 정지 완전 해제 후 카메라 **지연 추격(Drive-by / Lag-Chase) + 광각 FOV 개방**으로 속도 대비 극대화 후 등 뒤 3인칭 시점 복귀 (`invulnTimer = 0.80s`, 영거리 `28m` 탄막 정리, `py < 12m` 추락사 방지 최소 부양만 적용).
 - **빈도 제어:** 글로벌 쿨 `40.0s` + 증강별 개별 쿨 `85.0s`.
 - **대상 6종 (100% 수동 `STRIKE(Shift)` 적중 트리거 — 스윙·벽충돌 중 끼어들기 0%):**
-  1. `초중력 슈트` (`GRAVITY ZERO`, `APEX_SLAM` → `FLIP`): `peakFallSpeed >= 135` `SLAM!` 적중 시 (45m 와이드 수직 대기 압착 기둥 + 채워진 3중 3D 수평 충격 원환 + 파편 14개 비산).
-  2. `오버드라이브` (`MACH BREAK`, `APEX_MACH`): `SPD >= 165` 수동 `STRIKE` 적중 시 (7중 3D 잔상 + 채워진 3겹 3D 소닉붐 증기 원뿔 + 초광폭 3중 코어 마하 터널 빔 + 고압 정전기 4다발).
-  3. `고탄성 번지줄` (`SKY SLINGSHOT`, `DROP_HERO` → `FLIP`): 대아크(`swingDepth >= 68m`, `vy >= 95`) `PERFECT RELEASE` 후 `3.4s` 버프(`bungeeApexTimer`) 유지 중 `STRIKE` 적중 시 (역원뿔 상승 기압 깔때기 + 굵은 3D 상승 기류 리본 기둥 6줄 + 두꺼운 탄성 원환 3겹 + 2번 구름 8개 하향 스윕).
-  4. `올가미 스윙` (`WEB SUPERNOVA`, `STRIKE_TWOWEB` → `FLIP`): 6기 이상 포획 상태에서 `STRIKE` 일괄 기폭 적중 시 (굵은 3D 텐션 케이블 중앙 압착 수축 → 가로/세로 2중 교차 거대 3D 팔각 원환 + 8방향 굵은 방사 빔 + 파편 14개).
-  5. `연쇄 핀볼` (`PHANTOM PINBALL`, `STRIKE_SPIN`): 자동 5연쇄 풀완주(총 6기 연속 타격 완료) 마지막 `STRIKE` 적중 시 (굵은 3중 코어 3D 지그재그 빔 순차 점화 + 매 꼭짓점 두꺼운 3D 충격 원환 + 6번 지점 2중 교차 대형 충격 원반).
-  6. `탄성 반발` (`RICOCHET COUNTER`, `APEX_RICOCHET` → `STRIKE_DROPKICK`): 벽 반사 후 치명 버프(`elasticCritTimer > 0`, `2.5s`) 유지 + `SPD >= 100` `STRIKE` 적중 시 (외벽 2중 충격 분화구 원환 + 굵은 8가닥 3D 크랙 + 벽 파편 14개 + 초광폭 V자 3중 코어 반사 빔 + 3겹 반발 원환 + 정전기 4다발).
+  1. `초중력 슈트` (`GRAVITY ZERO`, `APEX_SLAM` → `FLIP`): `peakFallSpeed >= 135` `SLAM!` 적중 시 (45m 와이드 수직 대기 압착 기둥 + 분할선 없는 깔끔한 수평 기압 링 3겹 + 십자 섬광 + 파편 16개).
+  2. `오버드라이브` (`MACH BREAK`, `APEX_MACH`): `SPD >= 165` 수동 `STRIKE` 적중 시 (7중 3D 잔상 + 화면 가로 초음속 일섬(Flash Cut) + 고압 정전기 번개 4다발 + 22줄 스피드라인 폭풍).
+  3. `고탄성 번지줄` (`SKY SLINGSHOT`, `DROP_HERO` → `FLIP`): 대아크(`swingDepth >= 68m`, `vy >= 95`) `PERFECT RELEASE` 후 `3.4s` 버프(`bungeeApexTimer`) 유지 중 `STRIKE` 적중 시 (거미줄 스냅 절단 + 대형 `2번 구름` 10개 하향 돌파 스윕 + 24줄 수직 상승 스피드라인 폭풍).
+  4. `올가미 스윙` (`WEB SUPERNOVA`, `STRIKE_TWOWEB` → `FLIP`): 6기 이상 포획 상태에서 `STRIKE` 일괄 기폭 적중 시 (3D 거미줄 중앙 1점 압착 파열 → 8가닥 날카로운 충격 스파이크 + 대형 십자 플래시 + 파편 18개).
+  5. `연쇄 핀볼` (`PHANTOM PINBALL`, `STRIKE_SPIN`): 자동 5연쇄 풀완주(총 6기 연속 타격 완료) 마지막 `STRIKE` 적중 시 (6개 지점 중 5체 3D 분신 잔상 박제 + `1→6` 순차 번개 일섬 & 십자 충격 섬광 + 파편 16개).
+  6. `탄성 반발` (`RICOCHET COUNTER`, `APEX_RICOCHET` → `STRIKE_DROPKICK`): 벽 반사 후 치명 버프(`elasticCritTimer > 0`, `2.5s`) 유지 + `SPD >= 100` `STRIKE` 적중 시 (외벽 6가닥 지그재그 콘크리트 균열 + 벽 파편 18개 + V자 초고속 도탄 일섬 빔 & 번개 + 적중 십자 플래시).
 - **테스트 컨트롤:** PC 단축키 `X` 및 모바일 상단 바 `★CUT` 버튼으로 6종 순환 즉시 시연(`1/6~6/6`).
 
 ---

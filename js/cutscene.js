@@ -622,6 +622,18 @@ function tryTriggerApexCut(augId, payload, forceTest = false) {
     freezeFov = 174.0; releaseFov = 110.0;
     extras.chainPts = cPts;
     extras.chainSparkIdx = -1;
+    // 6개 타격 지점 중 앞 5개 지점에 3D 분신 잔상 박제 (Act 1 오빗 시 3D 연쇄 궤적 강조)
+    for (let ci = 0; ci < cPts.length - 1; ci++) {
+      afterimages.push({
+        x: cPts[ci].x,
+        y: cPts[ci].y,
+        z: cPts[ci].z,
+        poseKey: 'STRIKE_SPIN',
+        rot: ci * 0.9,
+        tone: (ci & 1),
+        life: 2.15 - ci * 0.06
+      });
+    }
 
     act2Look = { x: apexAnchorX, y: apexAnchorY, z: apexAnchorZ };
     act2Ang = startAng + rawArc + 0.85;
