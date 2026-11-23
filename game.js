@@ -144,9 +144,11 @@ let openingCloudRush = 0.0;
 let openingPoseRadial = 0.0;
 let gameOverReason = '';
 
-// Step 4: 플레이 방식 변혁 6종 증강 Lv.3(★각성) 1초 불릿타임 3D 오빗 컷씬 상태
-const APEX_FREEZE_DUR = 0.52;   // Phase 1: 완전 0% 시간정지 + 3D 시점 선회
-const APEX_TOTAL_DUR  = 1.00;   // Phase 2: 0.52~1.00s 시간 해제 + 지연 추격 스냅백
+// Step 4: 플레이 방식 변혁 6종 증강 Lv.3(★각성) 3.0초 3-Act 불릿타임 3D 컷씬 상태
+const APEX_ACT1_DUR   = 1.05;   // Act 1 (0.00~1.05s): 완전 0% 시간정지 + 70°~80° 3D 시점 선회
+const APEX_ACT2_DUR   = 2.05;   // Act 2 (1.05~2.05s): 매치 컷 앵글 전환 + 0.14x 초슬로우 + 3D 물리 이펙트
+const APEX_TOTAL_DUR  = 3.00;   // Act 3 (2.05~3.00s): 100% 원속 재개 + 드라이브바이 지연 추격 스냅백
+const APEX_ACT2_SCALE = 0.14;   // Act 2 월드 초슬로우 배율
 let btnApexTest = null;
 let apexActive = false;
 let apexId = '';
@@ -156,20 +158,25 @@ let apexCamBlend = 0.0;
 let apexCamX = 0.0, apexCamY = 0.0, apexCamZ = 0.0;
 let apexAnchorX = 0.0, apexAnchorY = 0.0, apexAnchorZ = 0.0;
 let apexStartAng = 0.0;
-let apexOrbitArc = 0.85;
-let apexOrbitRadius = 16.0;
-let apexOrbitRadiusEnd = 13.5;
+let apexOrbitArc = 1.32;
+let apexOrbitRadius = 17.0;
+let apexOrbitRadiusEnd = 14.0;
 let apexStartElev = 0.0;
 let apexEndElev = 0.0;
 let apexTargetRoll = 0.14;
 let apexFreezeFov = 192.0;
-let apexReleaseFov = 112.0;
+let apexReleaseFov = 108.0;
+let apexAct2Cam = null;         // Act 2 매치 컷 전용 카메라 궤도
+let apexAct2Started = false;
+let apexAct3Started = false;
+let apexFlashTimer = 0.0;       // 2프레임 고대비 임팩트 스냅
 let apexHoldCamX = 0.0, apexHoldCamY = 0.0, apexHoldCamZ = 0.0;
-let apexReleaseTriggered = false;
 let apexIsTest = false;
 let apexTestLabel = '';
 let apexSceneExtras = null;
 let lastElasticWallPt = null;   // 최근 벽 반사 3D 좌표 { x, y, z, nx, nz }
+let lastBungeeAnchorPt = null;  // 최근 고탄성 번지 대아크 앵커 3D 좌표
+let bungeeApexTimer = 0.0;      // 번지 대아크 PERFECT 후 STRIKE 적중 트리거 유지 타이머 (3.4s)
 let chainPathPts = [];          // 연쇄 핀볼 3D 경로 좌표 기록
 
 // Inputs
@@ -1367,10 +1374,11 @@ function resetGame() {
 }
 
 // =========================================================================
-// [Step 4] 플레이 방식 변혁 6종 증강 Lv.3(★각성) 1초 불릿타임 3D 오빗 컷씬 엔진
-// - Phase 1 (0.00~0.52s): 완전 0% 시간정지 + 3D 공간 시점 선회(Orbit) + 레터박스
-// - Phase 2 (0.52~1.00s): 시간 해제 + 지연 추격(Drive-by/Lag-Chase) + 광각 속도감 복귀
-// - 순수 연출 중심 (추가 딜 0 / 타이머 정지 / 종료 후 0.65s 안전 무적만 보장)
+// [Step 4] 플레이 방식 변혁 6종 증강 Lv.3(★각성) 3.0초 3-Act 불릿타임 3D 컷씬 엔진
+// - Act 1 (0.00~1.05s): 완전 0% 시간정지 + 70°~80° 3D 시점 선회(Orbit) + 레터박스
+// - Act 2 (1.05~2.05s): 매치 컷 앵글 전환 + 0.14x 초슬로우 + 비마법적 3D 물리 이펙트
+// - Act 3 (2.05~3.00s): 100% 원속 재개 + 드라이브바이 지연 추격 + 광각 스냅백
+// - 100% 수동 STRIKE(Shift) 적중 트리거 · 순수 연출 중심 (추가 딜 0 / 종료 후 0.80s 무적)
 // =========================================================================
 function resetApexCutState() {
   apexActive = false;
@@ -1378,20 +1386,33 @@ function resetApexCutState() {
   apexTimer = 0.0;
   apexLetterbox = 0.0;
   apexCamBlend = 0.0;
-  apexReleaseTriggered = false;
+  apexAct2Cam = null;
+  apexAct2Started = false;
+  apexAct3Started = false;
+  apexFlashTimer = 0.0;
   apexIsTest = false;
   apexTestLabel = '';
   apexSceneExtras = null;
   lastElasticWallPt = null;
+  lastBungeeAnchorPt = null;
+  bungeeApexTimer = 0.0;
   chainPathPts = [];
 }
 
 function isApexFreezePhase() {
-  return apexActive && apexTimer < APEX_FREEZE_DUR;
+  return apexActive && apexTimer < APEX_ACT1_DUR;
+}
+
+function isApexAct2Phase() {
+  return apexActive && apexTimer >= APEX_ACT1_DUR && apexTimer < APEX_ACT2_DUR;
+}
+
+function isApexInputLocked() {
+  return apexActive && apexTimer < APEX_ACT2_DUR;
 }
 
 function isApexCamBlocked(cx, cy, cz, bList) {
-  if (cy < 3.8) return true;
+  if (cy < 4.0) return true;
   if (!bList) return false;
   for (let i = 0; i < bList.length; i++) {
     const b = bList[i];
@@ -1408,8 +1429,8 @@ function isApexCamBlocked(cx, cy, cz, bList) {
 
 function pickSafeApexOrbitArc(ancX, ancY, ancZ, startAng, rawArc, r0, r1, e0, e1, bList) {
   const testArc = (arcVal, radScale, elevAdd) => {
-    for (let s = 0; s <= 3; s++) {
-      const u = s / 3.0;
+    for (let s = 0; s <= 4; s++) {
+      const u = s / 4.0;
       const ang = startAng + arcVal * u;
       const rad = (r0 + (r1 - r0) * u) * radScale;
       const tx = ancX + Math.sin(ang) * rad;
@@ -1421,9 +1442,34 @@ function pickSafeApexOrbitArc(ancX, ancY, ancZ, startAng, rawArc, r0, r1, e0, e1
   };
   if (testArc(rawArc, 1.0, 0.0)) return { arc: rawArc, radScale: 1.0, elevAdd: 0.0 };
   if (testArc(-rawArc, 1.0, 0.0)) return { arc: -rawArc, radScale: 1.0, elevAdd: 0.0 };
-  if (testArc(rawArc, 0.76, 4.5)) return { arc: rawArc, radScale: 0.76, elevAdd: 4.5 };
-  if (testArc(-rawArc, 0.76, 4.5)) return { arc: -rawArc, radScale: 0.76, elevAdd: 4.5 };
-  return { arc: rawArc * 0.65, radScale: 0.68, elevAdd: 6.5 };
+  if (testArc(rawArc, 0.76, 5.5)) return { arc: rawArc, radScale: 0.76, elevAdd: 5.5 };
+  if (testArc(-rawArc, 0.76, 5.5)) return { arc: -rawArc, radScale: 0.76, elevAdd: 5.5 };
+  return { arc: rawArc * 0.65, radScale: 0.68, elevAdd: 8.5 };
+}
+
+function pickSafeAct2Pos(lookX, lookY, lookZ, ang, dist, elev, bList) {
+  const candidates = [
+    { a: ang, d: dist, e: elev },
+    { a: ang + Math.PI * 0.5, d: dist * 0.9, e: elev + 3.0 },
+    { a: ang - Math.PI * 0.5, d: dist * 0.9, e: elev + 3.0 },
+    { a: ang + Math.PI, d: dist * 0.85, e: elev + 5.0 },
+    { a: ang, d: dist * 0.62, e: elev + 12.0 }
+  ];
+  for (let i = 0; i < candidates.length; i++) {
+    const c = candidates[i];
+    const cx = lookX + Math.sin(c.a) * c.d;
+    const cy = Math.max(5.0, lookY + c.e);
+    const cz = lookZ + Math.cos(c.a) * c.d;
+    if (!isApexCamBlocked(cx, cy, cz, bList)) {
+      return { x: cx, y: cy, z: cz, a: c.a, d: c.d, e: c.e };
+    }
+  }
+  return {
+    x: lookX + Math.sin(ang) * (dist * 0.55),
+    y: Math.max(8.0, lookY + elev + 14.0),
+    z: lookZ + Math.cos(ang) * (dist * 0.55),
+    a: ang, d: dist * 0.55, e: elev + 14.0
+  };
 }
 
 function tryTriggerApexCut(augId, payload, forceTest = false) {
@@ -1449,85 +1495,118 @@ function tryTriggerApexCut(augId, payload, forceTest = false) {
   apexActive = true;
   apexId = augId;
   apexTimer = 0.0;
-  apexReleaseTriggered = false;
+  apexAct2Started = false;
+  apexAct3Started = false;
+  apexFlashTimer = 0.055; // Act 1 진입 2~3프레임 임팩트 스냅
   apexIsTest = !!forceTest;
   apexTestLabel = data.testLabel || '';
-  apexLetterbox = 0.35;
+  apexLetterbox = 0.40;
   apexCamBlend = 1.0;
 
-  // 쿨타임 적용 (실전 발동 시에만: 글로벌 35s · 증강별 개별 70s)
+  // 쿨타임 적용 (실전 발동 시에만: 글로벌 40s · 증강별 개별 85s)
   if (!forceTest) {
     apexGlobalCd = APEX_GLOBAL_COOLDOWN;
     apexAugCds[augId] = APEX_AUG_COOLDOWN;
   }
 
-  // 기본 타겟 좌표 (없으면 전방 14m 지점)
   const targetPt = data.targetPt || {
     x: px + sinY * 13.0,
-    y: Math.max(8.0, py + (augId === 'heavy_suit' ? -6.5 : 1.0)),
+    y: Math.max(8.0, py + (augId === 'heavy_suit' ? -7.5 : 1.0)),
     z: pz + cosY * 13.0
   };
 
-  let rawArc = 0.88;
-  let r0 = 16.5, r1 = 13.5, e0 = 1.5, e1 = 0.5;
+  let rawArc = 1.32; // ~75° 여유로운 3D 오빗
+  let r0 = 17.5, r1 = 14.2, e0 = 1.5, e1 = 0.5;
   let startAng = camYaw + Math.PI + 0.35;
   let roll = 0.14;
   let freezeFov = 192.0;
-  let releaseFov = 112.0;
+  let releaseFov = 108.0;
 
-  const extras = { targetPt: targetPt, isDummy: !!data.isDummy };
+  // Act 2 매치 컷 기본 파라미터
+  let act2Look = { x: targetPt.x, y: targetPt.y, z: targetPt.z };
+  let act2Ang = camYaw + Math.PI * 0.25;
+  let act2Dist = 34.0;
+  let act2Elev = 4.0;
+  let act2DriftAng = 0.22;
+  let act2Roll = -0.10;
+  let act2Fov = 152.0;
+
+  const hSpd = Math.hypot(vx, vz);
+  const moveYaw = hSpd > 6.0 ? Math.atan2(vx, vz) : camYaw;
+  const mSin = Math.sin(moveYaw), mCos = Math.cos(moveYaw);
+  const extras = { targetPt: targetPt, isDummy: !!data.isDummy, moveYaw: moveYaw, mSin: mSin, mCos: mCos };
 
   if (augId === 'heavy_suit') {
-    // 초중력 슈트: 적 아래 로우 앵글에서 올려다보며 수직 높이 & 상하 3D 격차 노출
+    // 초중력 슈트: Act 1 로우 앵글 75° 오빗 -> Act 2 45m 원경 와이드 컷(수직 기압 기둥 + 3중 3D 수평 원반)
     apexAnchorX = px * 0.48 + targetPt.x * 0.52;
     apexAnchorY = Math.max(6.0, py * 0.45 + targetPt.y * 0.55);
     apexAnchorZ = pz * 0.48 + targetPt.z * 0.52;
-    startAng = camYaw + Math.PI * 0.65;
-    rawArc = 0.94;
-    r0 = 16.5; r1 = 13.8; e0 = -5.5; e1 = -2.0;
-    roll = 0.15;
-    freezeFov = 196.0; releaseFov = 112.0;
-    extras.dropTopY = py + 28.0;
+    startAng = camYaw + Math.PI * 0.62;
+    rawArc = 1.34;
+    r0 = 17.5; r1 = 14.2; e0 = -5.5; e1 = -2.0;
+    roll = 0.16;
+    freezeFov = 196.0; releaseFov = 108.0;
+    extras.dropTopY = py + 38.0;
+
+    act2Look = { x: targetPt.x, y: Math.max(10.0, targetPt.y + 8.0), z: targetPt.z };
+    act2Ang = startAng + rawArc + 0.75;
+    act2Dist = 44.0;
+    act2Elev = -4.0;
+    act2DriftAng = 0.18;
+    act2Roll = -0.06;
+    act2Fov = 144.0;
   } else if (augId === 'overdrive') {
-    // 오버드라이브: 측면 90° -> 전방 45° 슬라이드 + 3D 도트 잔상 5개 박제 -> 드라이브바이 지연 추격
-    const hSpd = Math.hypot(vx, vz);
-    const moveYaw = hSpd > 6.0 ? Math.atan2(vx, vz) : camYaw;
-    const mSin = Math.sin(moveYaw), mCos = Math.cos(moveYaw);
+    // 오버드라이브: Act 1 측면 90°->정면 30° 80° 슬라이드 + 7중 3D 잔상 + 마하 콘 -> Act 2 정면 저각 매치 컷(초음속 통과 + 정전기 아크)
     apexAnchorX = px * 0.52 + targetPt.x * 0.48;
     apexAnchorY = py * 0.52 + targetPt.y * 0.48;
     apexAnchorZ = pz * 0.52 + targetPt.z * 0.48;
     startAng = moveYaw + Math.PI * 0.55;
-    rawArc = -0.92;
-    r0 = 17.5; r1 = 14.2; e0 = 1.6; e1 = 0.4;
+    rawArc = -1.40;
+    r0 = 18.5; r1 = 14.5; e0 = 1.8; e1 = -0.4;
     roll = -0.18;
-    freezeFov = 188.0; releaseFov = 108.0;
+    freezeFov = 188.0; releaseFov = 104.0;
 
-    // 3D 공중 잔상 5개를 진행 반대 방향으로 일렬 박제 (시점 회전 시 3D 궤적 강조)
-    for (let gi = 1; gi <= 5; gi++) {
+    for (let gi = 1; gi <= 7; gi++) {
       afterimages.push({
-        x: px - mSin * (gi * 3.4),
-        y: py - Math.max(-1.6, Math.min(1.6, vy * 0.015)) * gi,
-        z: pz - mCos * (gi * 3.4),
+        x: px - mSin * (gi * 3.2),
+        y: py - Math.max(-1.4, Math.min(1.4, vy * 0.014)) * gi,
+        z: pz - mCos * (gi * 3.2),
         poseKey: 'APEX_MACH',
         rot: 0,
         tone: (gi & 1),
-        life: 0.72 - gi * 0.05
+        life: 1.85 - gi * 0.06
       });
     }
+
+    act2Look = { x: px + mSin * 6.0, y: py + 0.5, z: pz + mCos * 6.0 };
+    act2Ang = moveYaw + 0.24; // 진행 방향 정면 저각 매치 컷
+    act2Dist = 26.0;
+    act2Elev = -4.5;
+    act2DriftAng = -0.24;
+    act2Roll = 0.14;
+    act2Fov = 142.0;
   } else if (augId === 'bungee_web') {
-    // 고탄성 번지줄: 발아래 앙각 48° 선회로 빌딩 숲과 아찔한 상승 깊이 노출
-    const ancPt = data.anchorPt || { x: px + rightX * 26.0, y: py + 42.0, z: pz + sinY * 22.0 };
-    apexAnchorX = px;
-    apexAnchorY = Math.max(10.0, py - 1.5);
-    apexAnchorZ = pz;
-    startAng = camYaw + Math.PI * 0.78;
-    rawArc = 0.86;
-    r0 = 15.0; r1 = 12.8; e0 = -7.5; e1 = -10.0;
+    // 고탄성 번지줄: Act 1 발아래 앙각 72° 오빗(적과의 고도차 + 장력 거미줄) -> Act 2 상공 측면 와이드 컷(장력 파동 링 + 2번 구름 상승 스윕)
+    const ancPt = data.anchorPt || lastBungeeAnchorPt || { x: px + rightX * 28.0, y: py + 48.0, z: pz + sinY * 22.0 };
+    apexAnchorX = px * 0.62 + targetPt.x * 0.38;
+    apexAnchorY = Math.max(10.0, py * 0.62 + targetPt.y * 0.38);
+    apexAnchorZ = pz * 0.62 + targetPt.z * 0.38;
+    startAng = camYaw + Math.PI * 0.76;
+    rawArc = 1.26;
+    r0 = 16.5; r1 = 13.5; e0 = -7.5; e1 = -10.0;
     roll = -0.16;
-    freezeFov = 192.0; releaseFov = 110.0;
+    freezeFov = 192.0; releaseFov = 106.0;
     extras.anchorPt = ancPt;
+
+    act2Look = { x: px, y: py + 6.0, z: pz };
+    act2Ang = startAng + rawArc + 0.90;
+    act2Dist = 30.0;
+    act2Elev = -11.0;
+    act2DriftAng = 0.22;
+    act2Roll = 0.10;
+    act2Fov = 146.0;
   } else if (augId === 'lasso_swing') {
-    // 올가미 스윙: 포획된 적 6기+와 팽팽한 3D 거미줄 그물망 바깥에서 60° 선회
+    // 올가미 스윙: Act 1 3D 거미줄 구체망 외곽 80° 오빗 -> Act 2 와이드 컷(중앙 1점 압착 수축 + 대형 3D 팔각 충격 링)
     const lPts = (data.lassoPts && data.lassoPts.length > 0) ? data.lassoPts : [];
     let sx = px, sy = py, sz = pz;
     for (let i = 0; i < lPts.length; i++) {
@@ -1537,14 +1616,23 @@ function tryTriggerApexCut(augId, payload, forceTest = false) {
     apexAnchorX = (sx / cnt) * 0.55 + targetPt.x * 0.45;
     apexAnchorY = Math.max(8.0, (sy / cnt) * 0.55 + targetPt.y * 0.45);
     apexAnchorZ = (sz / cnt) * 0.55 + targetPt.z * 0.45;
-    startAng = camYaw + Math.PI * 0.70;
-    rawArc = 1.05;
-    r0 = 22.0; r1 = 17.5; e0 = 6.2; e1 = 2.8;
+    startAng = camYaw + Math.PI * 0.68;
+    rawArc = 1.40;
+    r0 = 23.0; r1 = 18.0; e0 = 6.5; e1 = 2.8;
     roll = 0.13;
-    freezeFov = 182.0; releaseFov = 114.0;
+    freezeFov = 182.0; releaseFov = 110.0;
     extras.lassoPts = lPts;
+    extras.lassoBurstDone = false;
+
+    act2Look = { x: targetPt.x, y: targetPt.y, z: targetPt.z };
+    act2Ang = startAng + rawArc + 0.70;
+    act2Dist = 38.0;
+    act2Elev = 9.0;
+    act2DriftAng = 0.20;
+    act2Roll = -0.09;
+    act2Fov = 148.0;
   } else if (augId === 'chain_pinball') {
-    // 연쇄 핀볼: 방금 튕겨 다닌 6개 3D 지그재그 경로를 상공 줌아웃 상태에서 54° 선회
+    // 연쇄 핀볼: Act 1 상공 32m 부감 75° 오빗 -> Act 2 측면 와이드 컷(1->6 꼭짓점 순차 3D 충격 링 + 정전기 번개 점화)
     const cPts = (data.chainPts && data.chainPts.length >= 2) ? data.chainPts : [
       { x: px - sinY * 18, y: py + 4, z: pz - cosY * 18 },
       { x: px, y: py, z: pz }
@@ -1556,32 +1644,50 @@ function tryTriggerApexCut(augId, payload, forceTest = false) {
     apexAnchorX = (sx / cPts.length) * 0.55 + px * 0.45;
     apexAnchorY = Math.max(10.0, (sy / cPts.length) * 0.55 + py * 0.45);
     apexAnchorZ = (sz / cPts.length) * 0.55 + pz * 0.45;
-    startAng = camYaw + Math.PI * 0.68;
-    rawArc = 0.94;
-    r0 = 25.0; r1 = 19.5; e0 = 10.0; e1 = 6.0;
+    startAng = camYaw + Math.PI * 0.65;
+    rawArc = 1.32;
+    r0 = 28.0; r1 = 22.0; e0 = 15.0; e1 = 10.0;
     roll = -0.14;
-    freezeFov = 176.0; releaseFov = 114.0;
+    freezeFov = 174.0; releaseFov = 110.0;
     extras.chainPts = cPts;
+    extras.chainSparkIdx = -1;
+
+    act2Look = { x: apexAnchorX, y: apexAnchorY, z: apexAnchorZ };
+    act2Ang = startAng + rawArc + 0.85;
+    act2Dist = 38.0;
+    act2Elev = 5.0;
+    act2DriftAng = -0.22;
+    act2Roll = 0.11;
+    act2Fov = 146.0;
   } else if (augId === 'elastic') {
-    // 탄성 반발: 빌딩 벽면 <-> 캐릭터 <-> 타겟 V자 3D 구도를 벽면 평행 시점에서 46° 선회
+    // 탄성 반발: Act 1 벽면 균열 <-> 캐릭터 <-> 적 V자 70° 오빗 -> Act 2 벽면 뒤 오버-더-숄더 컷(3겹 V자 반발 링 + 드롭킥 임팩트)
     const wallPt = data.wallPt || lastElasticWallPt || {
       x: px - rightX * 14.0 - sinY * 6.0,
       y: Math.max(8.0, py - 1.5),
-      z: pz - rightZ * 14.0 - cosY * 6.0
+      z: pz - rightZ * 14.0 - cosY * 6.0,
+      nx: rightX, nz: rightZ
     };
     apexAnchorX = px * 0.50 + targetPt.x * 0.30 + wallPt.x * 0.20;
     apexAnchorY = Math.max(7.0, py * 0.55 + targetPt.y * 0.25 + wallPt.y * 0.20);
     apexAnchorZ = pz * 0.50 + targetPt.z * 0.30 + wallPt.z * 0.20;
     const wAng = Math.atan2(px - wallPt.x, pz - wallPt.z);
-    startAng = wAng + 0.55;
-    rawArc = 0.82;
-    r0 = 17.0; r1 = 13.8; e0 = 2.0; e1 = 0.8;
+    startAng = wAng + 0.50;
+    rawArc = 1.24;
+    r0 = 18.0; r1 = 14.5; e0 = 2.2; e1 = 0.8;
     roll = 0.16;
-    freezeFov = 190.0; releaseFov = 112.0;
+    freezeFov = 190.0; releaseFov = 108.0;
     extras.wallPt = wallPt;
+
+    act2Look = { x: px * 0.45 + targetPt.x * 0.55, y: py * 0.45 + targetPt.y * 0.55, z: pz * 0.45 + targetPt.z * 0.55 };
+    act2Ang = Math.atan2(wallPt.x - targetPt.x, wallPt.z - targetPt.z) + 0.22;
+    act2Dist = 26.0;
+    act2Elev = 3.5;
+    act2DriftAng = 0.20;
+    act2Roll = -0.14;
+    act2Fov = 152.0;
   }
 
-  // 건물 관통 0% 안전 오빗 방향 자동 선택
+  // Act 1 건물 관통 0% 안전 오빗 방향 자동 선택
   const safe = pickSafeApexOrbitArc(apexAnchorX, apexAnchorY, apexAnchorZ, startAng, rawArc, r0, r1, e0, e1, bList);
   apexStartAng = startAng;
   apexOrbitArc = safe.arc;
@@ -1593,6 +1699,18 @@ function tryTriggerApexCut(augId, payload, forceTest = false) {
   apexFreezeFov = freezeFov;
   apexReleaseFov = releaseFov;
   apexSceneExtras = extras;
+
+  // Act 2 매치 컷 안전 카메라 위치 사전 계산
+  const safe2 = pickSafeAct2Pos(act2Look.x, act2Look.y, act2Look.z, act2Ang, act2Dist, act2Elev, bList);
+  const endAng2 = safe2.a + act2DriftAng;
+  apexAct2Cam = {
+    x: safe2.x, y: safe2.y, z: safe2.z,
+    endX: act2Look.x + Math.sin(endAng2) * (safe2.d * 0.94),
+    endY: Math.max(5.0, act2Look.y + safe2.e + 1.5),
+    endZ: act2Look.z + Math.cos(endAng2) * (safe2.d * 0.94),
+    lookX: act2Look.x, lookY: act2Look.y, lookZ: act2Look.z,
+    roll: act2Roll, fov: act2Fov
+  };
 
   // 시작 프레임 카메라 위치 즉시 동기화 (첫 프레임 튐 방지)
   apexCamX = apexAnchorX + Math.sin(apexStartAng) * apexOrbitRadius;
@@ -1630,11 +1748,10 @@ function triggerApexTestCycle() {
     btnApexTest.textContent = '★CUT ' + (idx + 1) + '/6';
   }
 
-  // 테스트 모드: 현재 위치 기준 3D 공간감 확인용 더미 3D 좌표 생성 (실제 적/게임 진행 무영향)
   const sinY = Math.sin(camYaw), cosY = Math.cos(camYaw);
   const rightX = cosY, rightZ = -sinY;
-  const safeY = Math.max(28.0, py);
-  if (py < 24.0) { py = 36.0; }
+  if (py < 32.0) { py = 46.0; }
+  const safeY = py;
 
   const payload = {
     isDummy: true,
@@ -1642,37 +1759,38 @@ function triggerApexTestCycle() {
   };
 
   if (augId === 'heavy_suit') {
-    payload.targetPt = { x: px + sinY * 5.0, y: Math.max(8.0, py - 9.0), z: pz + cosY * 5.0 };
+    payload.targetPt = { x: px + sinY * 5.0, y: Math.max(10.0, py - 9.0), z: pz + cosY * 5.0 };
   } else if (augId === 'overdrive') {
-    payload.targetPt = { x: px + sinY * 11.0, y: py + 0.5, z: pz + cosY * 11.0 };
+    payload.targetPt = { x: px + sinY * 12.0, y: py + 0.5, z: pz + cosY * 12.0 };
   } else if (augId === 'bungee_web') {
-    payload.anchorPt = { x: px + rightX * 32.0 + sinY * 14.0, y: py + 48.0, z: pz + rightZ * 32.0 + cosY * 14.0 };
+    payload.anchorPt = { x: px + rightX * 32.0 + sinY * 14.0, y: py + 52.0, z: pz + rightZ * 32.0 + cosY * 14.0 };
+    payload.targetPt = { x: px + sinY * 11.0, y: Math.max(12.0, py - 4.0), z: pz + cosY * 11.0 };
   } else if (augId === 'lasso_swing') {
     payload.targetPt = { x: px + sinY * 14.0, y: py + 1.0, z: pz + cosY * 14.0 };
     const lPts = [];
     for (let k = 0; k < 6; k++) {
       const a = (k / 6) * Math.PI * 2 + 0.3;
       lPts.push({
-        x: px + sinY * 10.0 + Math.cos(a) * 14.0,
-        y: Math.max(8.0, py + Math.sin(a * 2.0) * 6.5),
-        z: pz + cosY * 10.0 + Math.sin(a) * 14.0
+        x: px + sinY * 10.0 + Math.cos(a) * 15.0,
+        y: Math.max(10.0, py + Math.sin(a * 2.0) * 7.0),
+        z: pz + cosY * 10.0 + Math.sin(a) * 15.0
       });
     }
     payload.lassoPts = lPts;
   } else if (augId === 'chain_pinball') {
     const cPts = [
-      { x: px - sinY * 26.0 - rightX * 14.0, y: Math.max(12.0, py - 6.0), z: pz - cosY * 26.0 - rightZ * 14.0 },
-      { x: px - sinY * 20.0 + rightX * 15.0, y: Math.max(14.0, py + 7.0), z: pz - cosY * 20.0 + rightZ * 15.0 },
-      { x: px - sinY * 11.0 - rightX * 16.0, y: Math.max(12.0, py - 4.0), z: pz - cosY * 11.0 - rightZ * 16.0 },
-      { x: px - sinY * 5.0 + rightX * 14.0,  y: Math.max(14.0, py + 8.0), z: pz - cosY * 5.0 + rightZ * 14.0 },
-      { x: px + sinY * 3.0 - rightX * 9.0,   y: Math.max(10.0, py - 2.0), z: pz + cosY * 3.0 - rightZ * 9.0 },
+      { x: px - sinY * 28.0 - rightX * 15.0, y: Math.max(14.0, py - 7.0), z: pz - cosY * 28.0 - rightZ * 15.0 },
+      { x: px - sinY * 20.0 + rightX * 16.0, y: Math.max(16.0, py + 8.0), z: pz - cosY * 20.0 + rightZ * 16.0 },
+      { x: px - sinY * 11.0 - rightX * 17.0, y: Math.max(14.0, py - 5.0), z: pz - cosY * 11.0 - rightZ * 17.0 },
+      { x: px - sinY * 4.0 + rightX * 15.0,  y: Math.max(16.0, py + 9.0), z: pz - cosY * 4.0 + rightZ * 15.0 },
+      { x: px + sinY * 4.0 - rightX * 10.0,  y: Math.max(12.0, py - 2.0), z: pz + cosY * 4.0 - rightZ * 10.0 },
       { x: px, y: py, z: pz }
     ];
     payload.chainPts = cPts;
     payload.targetPt = { x: px + sinY * 8.0, y: py + 1.0, z: pz + cosY * 8.0 };
   } else if (augId === 'elastic') {
-    payload.wallPt = { x: px - rightX * 16.0 - sinY * 5.0, y: Math.max(10.0, safeY - 2.0), z: pz - rightZ * 16.0 - cosY * 5.0 };
-    payload.targetPt = { x: px + rightX * 9.0 + sinY * 10.0, y: Math.max(10.0, safeY + 2.0), z: pz + rightZ * 9.0 + cosY * 10.0 };
+    payload.wallPt = { x: px - rightX * 16.0 - sinY * 6.0, y: Math.max(12.0, safeY - 2.0), z: pz - rightZ * 16.0 - cosY * 6.0, nx: rightX, nz: rightZ };
+    payload.targetPt = { x: px + rightX * 10.0 + sinY * 11.0, y: Math.max(12.0, safeY + 2.0), z: pz + rightZ * 10.0 + cosY * 11.0 };
   }
 
   tryTriggerApexCut(augId, payload, true);
@@ -1681,43 +1799,75 @@ function triggerApexTestCycle() {
   }
 }
 
-// Phase 1 (완전 0% 시간정지 + 3D 시점 선회) 업데이트 — true 반환 시 월드 물리/적/타이머 완전 정지
-function updateApexCutFreeze(dt) {
+// Step 4 3-Act 시간 진행 & Act 1(완전 0% 정지) 제어 — true 반환 시 월드 완전 정지
+function updateApexCutFreeze(rawDt) {
   if (!apexActive) return false;
-  apexTimer += dt;
+  apexTimer += rawDt;
+  if (apexFlashTimer > 0.0) apexFlashTimer = Math.max(0.0, apexFlashTimer - rawDt);
 
-  if (apexTimer < APEX_FREEZE_DUR) {
-    const p = Math.max(0.0, Math.min(1.0, apexTimer / APEX_FREEZE_DUR));
-    // Ease-Out 커브: 빠르게 진입 후 3D 입체감을 음미하도록 부드럽게 감속 선회
-    const u = 1.0 - Math.pow(1.0 - p, 2.2);
+  // === Act 1 (0.00~1.05s): 완전 0% 시간정지 + 70°~80° 3D 시점 선회 ===
+  if (apexTimer < APEX_ACT1_DUR) {
+    const p = Math.max(0.0, Math.min(1.0, apexTimer / APEX_ACT1_DUR));
+    const u = 1.0 - Math.pow(1.0 - p, 2.0);
     const curAng = apexStartAng + apexOrbitArc * u;
     const curRad = apexOrbitRadius + (apexOrbitRadiusEnd - apexOrbitRadius) * u;
     const curElev = apexStartElev + (apexEndElev - apexStartElev) * u;
 
     apexCamX = apexAnchorX + Math.sin(curAng) * curRad;
-    apexCamY = Math.max(4.2, apexAnchorY + curElev);
+    apexCamY = Math.max(4.5, apexAnchorY + curElev);
     apexCamZ = apexAnchorZ + Math.cos(curAng) * curRad;
     apexCamBlend = 1.0;
-    apexLetterbox = Math.min(1.0, apexTimer / 0.08);
+    apexLetterbox = Math.min(1.0, apexTimer / 0.10);
 
     const dx = apexAnchorX - apexCamX;
     const dy = apexAnchorY - apexCamY;
     const dz = apexAnchorZ - apexCamZ;
     camLagYaw = Math.atan2(dx, dz);
     camPitch = Math.max(-1.05, Math.min(0.85, Math.atan2(dy, Math.hypot(dx, dz) || 1.0)));
-    camRoll += (apexTargetRoll - camRoll) * Math.min(1.0, 10.0 * dt);
-    fovD += (apexFreezeFov - fovD) * Math.min(1.0, 10.0 * dt);
+    camRoll += (apexTargetRoll - camRoll) * Math.min(1.0, 8.0 * rawDt);
+    fovD += (apexFreezeFov - fovD) * Math.min(1.0, 8.0 * rawDt);
     return true;
   }
 
-  // Phase 1 -> Phase 2 전환 순간 (1회 실행: 안전 복귀 + 지연 추격 기준점 저장)
-  if (!apexReleaseTriggered) {
-    apexReleaseTriggered = true;
+  // === Act 1 -> Act 2 진입 1회 트리거 (매치 컷 + 3D 물리 이펙트 점화) ===
+  if (!apexAct2Started) {
+    apexAct2Started = true;
+    apexFlashTimer = 0.055; // 매치 컷 2프레임 임팩트 스냅
+    const def = APEX_CUT_DEFS[apexId];
+    const accCol = def ? def.col : PAL.GOLD;
+    const tPt = (apexSceneExtras && apexSceneExtras.targetPt) ? apexSceneExtras.targetPt : { x: px, y: py, z: pz };
+    shakeMag = Math.max(shakeMag, 4.8);
+    spawnSparks(tPt.x, tPt.y, tPt.z, accCol, 16, 46);
+    if (apexId === 'heavy_suit') {
+      shakeMag = Math.max(shakeMag, 6.2);
+      shockwaves.push({ x: tPt.x, y: tPt.y, z: tPt.z, r: 8, maxR: 120, life: 0.90, maxLife: 0.90, col: PAL.ORANGE });
+    } else if (apexId === 'overdrive') {
+      const mSin = apexSceneExtras ? apexSceneExtras.mSin : Math.sin(camYaw);
+      const mCos = apexSceneExtras ? apexSceneExtras.mCos : Math.cos(camYaw);
+      spawnLightningBolt(px - mSin * 20, py, pz - mCos * 20, tPt.x + mSin * 14, tPt.y, tPt.z + mCos * 14, PAL.NEON_PINK, 0.45);
+      spawnLightningBolt(px - mSin * 12, py + 3, pz - mCos * 12, tPt.x + mSin * 8, tPt.y - 2, tPt.z + mCos * 8, '#ffffff', 0.38);
+    } else if (apexId === 'bungee_web') {
+      shockwaves.push({ x: px, y: py, z: pz, r: 6, maxR: 75, life: 0.65, maxLife: 0.65, col: PAL.GOLD });
+    } else if (apexId === 'elastic' && apexSceneExtras && apexSceneExtras.wallPt) {
+      const wp = apexSceneExtras.wallPt;
+      spawnLightningBolt(wp.x, wp.y, wp.z, px, py, pz, PAL.EMERALD, 0.48);
+      spawnLightningBolt(px, py, pz, tPt.x, tPt.y, tPt.z, '#ffffff', 0.48);
+    }
+    if (apexAct2Cam) {
+      apexCamX = apexAct2Cam.x;
+      apexCamY = apexAct2Cam.y;
+      apexCamZ = apexAct2Cam.z;
+    }
+  }
+
+  // === Act 2 -> Act 3 진입 1회 트리거 (100% 원속 재개 + 안전 무적 0.80s + 드라이브바이) ===
+  if (apexTimer >= APEX_ACT2_DUR && !apexAct3Started) {
+    apexAct3Started = true;
     apexHoldCamX = apexCamX;
     apexHoldCamY = apexCamY;
     apexHoldCamZ = apexCamZ;
     const def = APEX_CUT_DEFS[apexId];
-    invulnTimer = Math.max(invulnTimer, 0.65);
+    invulnTimer = Math.max(invulnTimer, 0.80);
     clearProjectilesInRadius(px, py, pz, 28.0, def ? def.col : PAL.GOLD);
     if (py < 12.0 && vy < 10.0) {
       vy = Math.max(vy, 24.0);
@@ -1726,65 +1876,115 @@ function updateApexCutFreeze(dt) {
       doingFlip = true;
       flipAngle = 0.0;
     }
-    // 테스트 모드일 때만 해제 직후 속도 대비를 눈으로 확인하도록 가벼운 테스트 추진
     if (apexIsTest) {
       const sinY = Math.sin(camYaw), cosY = Math.cos(camYaw);
       if (apexId === 'overdrive') {
-        vx = sinY * 140.0; vz = cosY * 140.0; vy = Math.max(vy, 10.0);
+        vx = sinY * 148.0; vz = cosY * 148.0; vy = Math.max(vy, 10.0);
       } else if (apexId === 'bungee_web') {
-        vx = sinY * 62.0; vz = cosY * 62.0; vy = 86.0;
+        vx = sinY * 64.0; vz = cosY * 64.0; vy = 88.0;
       } else if (apexId === 'heavy_suit') {
-        vx = sinY * 48.0; vz = cosY * 48.0; vy = 52.0;
+        vx = sinY * 50.0; vz = cosY * 50.0; vy = 56.0;
       } else if (apexId === 'elastic') {
-        vx = sinY * 98.0; vz = cosY * 98.0; vy = 32.0;
+        vx = sinY * 104.0; vz = cosY * 104.0; vy = 34.0;
       } else {
-        vx = sinY * 78.0; vz = cosY * 78.0; vy = Math.max(vy, 36.0);
+        vx = sinY * 82.0; vz = cosY * 82.0; vy = Math.max(vy, 38.0);
       }
     }
   }
   return false;
 }
 
-// Phase 2 (0.52~1.00s): 월드 물리 100% 재개 + 드라이브바이 지연 추격 -> 3인칭 스냅백
-function applyApexReleaseCamera(dt) {
-  if (!apexActive || apexTimer < APEX_FREEZE_DUR) return;
-  const relDur = Math.max(0.05, APEX_TOTAL_DUR - APEX_FREEZE_DUR);
-  const p = Math.max(0.0, Math.min(1.0, (apexTimer - APEX_FREEZE_DUR) / relDur));
+// Act 2 (1.05~2.05s 매치 컷 카메라) & Act 3 (2.05~3.00s 드라이브바이 지연 추격 -> 3인칭 스냅백)
+function applyApexReleaseCamera(rawDt) {
+  if (!apexActive || apexTimer < APEX_ACT1_DUR) return;
 
-  // 초반 45%: 카메라가 지연 추격(Lag-Chase)하며 광각(FOV)으로 속도 대비 극대화
-  const lagFollow = p < 0.45 ? 1.8 : 7.5;
+  // === Act 2 (1.05~2.05s): 매치 컷 앵글 유지 + 미세 드리프트 + 순차 물리 이펙트 점화 ===
+  if (apexTimer < APEX_ACT2_DUR) {
+    const p2 = Math.max(0.0, Math.min(1.0, (apexTimer - APEX_ACT1_DUR) / (APEX_ACT2_DUR - APEX_ACT1_DUR)));
+    if (apexAct2Cam) {
+      apexCamX = apexAct2Cam.x + (apexAct2Cam.endX - apexAct2Cam.x) * p2;
+      apexCamY = apexAct2Cam.y + (apexAct2Cam.endY - apexAct2Cam.y) * p2;
+      apexCamZ = apexAct2Cam.z + (apexAct2Cam.endZ - apexAct2Cam.z) * p2;
+      const lx = apexAct2Cam.lookX * 0.65 + px * 0.35;
+      const ly = apexAct2Cam.lookY * 0.65 + py * 0.35;
+      const lz = apexAct2Cam.lookZ * 0.65 + pz * 0.35;
+      const dx = lx - apexCamX, dy = ly - apexCamY, dz = lz - apexCamZ;
+      camLagYaw = Math.atan2(dx, dz);
+      camPitch = Math.max(-1.05, Math.min(0.85, Math.atan2(dy, Math.hypot(dx, dz) || 1.0)));
+      camRoll = apexAct2Cam.roll;
+      fovD = apexAct2Cam.fov - p2 * 14.0;
+    }
+    apexCamBlend = 1.0;
+    apexLetterbox = 1.0;
+
+    // 올가미 스윙: 중앙 수축 완료 시점(p2 >= 0.42) 임팩트 스냅 + 3D 폭발 스파크
+    if (apexId === 'lasso_swing' && apexSceneExtras && !apexSceneExtras.lassoBurstDone && p2 >= 0.42) {
+      apexSceneExtras.lassoBurstDone = true;
+      apexFlashTimer = 0.05;
+      const tp = apexSceneExtras.targetPt || { x: px, y: py, z: pz };
+      shakeMag = Math.max(shakeMag, 5.8);
+      spawnSparks(tp.x, tp.y, tp.z, PAL.GOLD, 18, 55);
+      shockwaves.push({ x: tp.x, y: tp.y, z: tp.z, r: 8, maxR: 135, life: 0.55, maxLife: 0.55, col: '#d8b4fe' });
+    }
+    // 연쇄 핀볼: 0.11s 간격으로 6개 꼭짓점 순차 정전기 번개 점화
+    if (apexId === 'chain_pinball' && apexSceneExtras && apexSceneExtras.chainPts) {
+      const cPts = apexSceneExtras.chainPts;
+      const wantIdx = Math.min(cPts.length - 1, Math.floor(p2 / 0.14));
+      while (apexSceneExtras.chainSparkIdx < wantIdx) {
+        apexSceneExtras.chainSparkIdx++;
+        const k = apexSceneExtras.chainSparkIdx;
+        const pt = cPts[k];
+        spawnSparks(pt.x, pt.y, pt.z, k === cPts.length - 1 ? PAL.GOLD : PAL.NEON_PINK, 10, 34);
+        if (k > 0) {
+          const prev = cPts[k - 1];
+          spawnLightningBolt(prev.x, prev.y, prev.z, pt.x, pt.y, pt.z, k === cPts.length - 1 ? PAL.GOLD : PAL.NEON_PINK, 0.34);
+        }
+        if (k === cPts.length - 1) {
+          shakeMag = Math.max(shakeMag, 5.2);
+          shockwaves.push({ x: pt.x, y: pt.y, z: pt.z, r: 6, maxR: 95, life: 0.45, maxLife: 0.45, col: PAL.GOLD });
+        }
+      }
+    }
+    return;
+  }
+
+  // === Act 3 (2.05~3.00s): 100% 원속 재개 + 드라이브바이 지연 추격 -> 3인칭 스냅백 ===
+  const relDur = Math.max(0.05, APEX_TOTAL_DUR - APEX_ACT2_DUR);
+  const p = Math.max(0.0, Math.min(1.0, (apexTimer - APEX_ACT2_DUR) / relDur));
+
+  const lagFollow = p < 0.40 ? 1.5 : 7.8;
   const sinY = Math.sin(camYaw), cosY = Math.cos(camYaw);
   const wantBackX = px - sinY * 14.0;
   const wantBackY = Math.max(4.5, py + 3.5);
   const wantBackZ = pz - cosY * 14.0;
-  apexHoldCamX += (wantBackX - apexHoldCamX) * Math.min(1.0, lagFollow * dt);
-  apexHoldCamY += (wantBackY - apexHoldCamY) * Math.min(1.0, lagFollow * dt);
-  apexHoldCamZ += (wantBackZ - apexHoldCamZ) * Math.min(1.0, lagFollow * dt);
+  apexHoldCamX += (wantBackX - apexHoldCamX) * Math.min(1.0, lagFollow * rawDt);
+  apexHoldCamY += (wantBackY - apexHoldCamY) * Math.min(1.0, lagFollow * rawDt);
+  apexHoldCamZ += (wantBackZ - apexHoldCamZ) * Math.min(1.0, lagFollow * rawDt);
 
   apexCamX = apexHoldCamX;
   apexCamY = apexHoldCamY;
   apexCamZ = apexHoldCamZ;
 
-  const snapT = p < 0.45 ? 0.0 : ((p - 0.45) / 0.55);
+  const snapT = p < 0.40 ? 0.0 : ((p - 0.40) / 0.60);
   const easeOut = 1.0 - (1.0 - snapT) * (1.0 - snapT);
   apexCamBlend = 1.0 - easeOut;
   apexLetterbox = Math.max(0.0, 1.0 - easeOut);
 
-  // 카메라 시선은 캐릭터가 날아가는 지점을 추적하다가 점진적으로 정상 camLagYaw로 복귀
   const dx = px - apexCamX, dy = (py + 1.0) - apexCamY, dz = pz - apexCamZ;
   const trackYaw = Math.atan2(dx, dz);
   const trackPitch = Math.max(-0.98, Math.min(0.75, Math.atan2(dy, Math.hypot(dx, dz) || 1.0)));
   let yawDiff = (trackYaw - camLagYaw + Math.PI) % (2 * Math.PI) - Math.PI;
   if (yawDiff < -Math.PI) yawDiff += 2 * Math.PI;
-  camLagYaw += yawDiff * apexCamBlend * Math.min(1.0, 14.0 * dt);
+  camLagYaw += yawDiff * apexCamBlend * Math.min(1.0, 14.0 * rawDt);
   camPitch = camPitch + (trackPitch - camPitch) * apexCamBlend;
-  camRoll = camRoll * (1.0 - apexCamBlend) + (apexTargetRoll * 0.25 * (1.0 - p)) * apexCamBlend;
-  fovD = fovD + (apexReleaseFov - fovD) * apexCamBlend * Math.min(1.0, 14.0 * dt);
+  camRoll = camRoll * (1.0 - apexCamBlend) + (apexTargetRoll * 0.22 * (1.0 - p)) * apexCamBlend;
+  fovD = fovD + (apexReleaseFov - fovD) * apexCamBlend * Math.min(1.0, 14.0 * rawDt);
 
   if (apexTimer >= APEX_TOTAL_DUR) {
     apexActive = false;
     apexCamBlend = 0.0;
     apexLetterbox = 0.0;
+    apexAct2Cam = null;
     apexSceneExtras = null;
     apexIsTest = false;
   }
@@ -2029,7 +2229,7 @@ function onStrikePress() {
   if (gameOver) { resetGame(); return; }
   if (handleOpeningAnyInput()) return;
   if (isOpeningActive()) return;
-  if (isApexFreezePhase()) return;
+  if (isApexInputLocked()) return;
   if (strikeCooldown > 0 || strikeMode !== 0) return;
 
   const aug = getAugStats();
@@ -2264,7 +2464,7 @@ function onSwingDown() {
   swingHeld = true;
   swingReattachCooldown = 0;
   btnSwing.classList.add('pressed');
-  if (isApexFreezePhase()) {
+  if (isApexInputLocked()) {
     return;
   }
 
@@ -2339,11 +2539,10 @@ function onSwingUp() {
         spawnSparks(px, py, pz, PAL.NEON_CYAN, 8, 30);
         addPopup('PERFECT RELEASE!!', PAL.NEON_CYAN, 3);
 
-        // [Step 4] 고탄성 번지줄 Lv.3 극한 슬링샷 1초 불릿타임 3D 오빗 컷씬
+        // [Step 4] 고탄성 번지줄 Lv.3 대아크 PERFECT -> 3.4s 버프 저장 (수동 STRIKE 적중 시에만 컷신 발동!)
         if (lvBung >= 3 && swingDepth >= 68.0 && vy >= 95.0) {
-          if (tryTriggerApexCut('bungee_web', { anchorPt: prevAnchorPt })) {
-            hitStopTimer = 0.0;
-          }
+          bungeeApexTimer = 3.4;
+          lastBungeeAnchorPt = prevAnchorPt;
         }
       } else {
         const upwardKick = (6.0 + depthRatio * 6.0) * aug.bungeeBounce;
@@ -3090,12 +3289,14 @@ function updateCombat(dt, oldX, oldY, oldZ, bList, totalSpeed) {
           airTimeStack = (airSpec && airSpec.keepRatio > 0) ? (airTimeStack * airSpec.keepRatio) : 0.0;
         }
         peakFallSpeed = (fallSpec && fallSpec.keepRatio > 0) ? (peakFallSpeed * fallSpec.keepRatio) : 0.0;
+        const bungeeApexBeforeReset = bungeeApexTimer;
         frictionCharge = 0.0;
         perfectBuffTimer = 0.0;
         skimTechTimer = 0.0;
         elasticCritTimer = 0.0;
+        bungeeApexTimer = 0.0;
 
-        // [Step 4] 플레이 방식 변혁 Lv.3(★각성) 순수 연출 1초 불릿타임 3D 오빗 체크 (추가 딜 0)
+        // [Step 4] 플레이 방식 변혁 6종 Lv.3(★각성) 100% 수동 STRIKE(Shift) 적중 트리거 (추가 딜 0)
         const apexTargetPt = { x: targetX, y: targetY, z: targetZ };
         let apexTriggered = false;
         if (!apexTriggered && lassoTiedCount >= 6 && getLv('lasso_swing') >= 3) {
@@ -3107,10 +3308,13 @@ function updateCombat(dt, oldX, oldY, oldZ, bList, totalSpeed) {
         if (!apexTriggered && curMode === 1 && lvHeavy >= 3 && peakFallBeforeReset >= 135.0) {
           apexTriggered = tryTriggerApexCut('heavy_suit', { targetPt: apexTargetPt });
         }
-        if (!apexTriggered && curMode === 3 && !wasChainRush && getLv('overdrive') >= 3 && strikeEntrySpd >= 165.0) {
+        if (!apexTriggered && !wasChainRush && getLv('overdrive') >= 3 && strikeEntrySpd >= 165.0) {
           apexTriggered = tryTriggerApexCut('overdrive', { targetPt: apexTargetPt });
         }
-        if (!apexTriggered && getLv('elastic') >= 3 && elasticCritBeforeReset >= 1.6 && strikeEntrySpd >= 100.0) {
+        if (!apexTriggered && !wasChainRush && getLv('bungee_web') >= 3 && bungeeApexBeforeReset > 0.0) {
+          apexTriggered = tryTriggerApexCut('bungee_web', { targetPt: apexTargetPt, anchorPt: lastBungeeAnchorPt });
+        }
+        if (!apexTriggered && !wasChainRush && getLv('elastic') >= 3 && elasticCritBeforeReset > 0.0 && strikeEntrySpd >= 100.0) {
           apexTriggered = tryTriggerApexCut('elastic', { targetPt: apexTargetPt, wallPt: lastElasticWallPt });
         }
         if (apexTriggered) {
@@ -3909,7 +4113,7 @@ function drawSpiderManSprite(cb, totalSpeed) {
     else if (openingPoseMode === 'POSE') poseKey = 'DROP_HERO';
     else poseKey = 'DIVE';
   } else if (apexDef) {
-    if (apexTimer < APEX_FREEZE_DUR) {
+    if (apexTimer < APEX_ACT1_DUR) {
       poseKey = apexDef.pose1;
       spinThisPose = false;
     } else {
@@ -4328,9 +4532,10 @@ function tick(now) {
   lastTime = now;
   if (dt > 0.05) dt = 0.05;
   if (dt < 0.001) dt = 0.016;
+  const rawDt = dt;
 
   fpsFrames++;
-  fpsAcc += dt;
+  fpsAcc += rawDt;
   if (fpsAcc >= 0.45) {
     if (fpsBadge) fpsBadge.textContent = Math.round(fpsFrames / fpsAcc) + ' FPS';
     fpsFrames = 0;
@@ -4339,7 +4544,7 @@ function tick(now) {
 
   if (augmentDraftOpen) {
     if (draftLockTimer > 0) {
-      draftLockTimer = Math.max(0, draftLockTimer - dt);
+      draftLockTimer = Math.max(0, draftLockTimer - rawDt);
     }
     if (Math.abs(joyX) < 0.25) {
       draftJoyLock = false;
@@ -4355,16 +4560,20 @@ function tick(now) {
   }
 
   const isFrozen = hitStopTimer > 0 || gameOver || augmentDraftOpen;
-  if (hitStopTimer > 0) hitStopTimer = Math.max(0, hitStopTimer - dt);
+  if (hitStopTimer > 0) hitStopTimer = Math.max(0, hitStopTimer - rawDt);
 
   const { turn: turnInput, fwd: forwardInput } = getInputs();
   const { blocks: nearbyBlocks, buildings: nearbyBuildings, clouds: nearbyClouds, parks: nearbyParks } = getNearbyWorld();
 
-  if (!isFrozen && updateOpeningCutscene(dt)) {
+  if (!isFrozen && updateOpeningCutscene(rawDt)) {
     // 컷신(ROOF_WAIT / ROOF_WALK / DROP_INTRO) 중에는 본 게임 물리·전투·타이머 스킵
-  } else if (!isFrozen && updateApexCutFreeze(dt)) {
-    // Step 4 Phase 1 (0.00~0.52s): 완전 0% 시간정지 + 3D 시점 선회 (물리·적·타이머 완전 정지)
+  } else if (!isFrozen && updateApexCutFreeze(rawDt)) {
+    // Step 4 Act 1 (0.00~1.05s): 완전 0% 시간정지 + 70°~80° 3D 시점 선회 (물리·적·타이머 완전 정지)
   } else if (!isFrozen) {
+    // Step 4 Act 2 (1.05~2.05s): 매치 컷 0.14x 초슬로우 물리, Act 3 (2.05~3.00s): 100% 원속 재개
+    if (isApexAct2Phase()) {
+      dt = rawDt * APEX_ACT2_SCALE;
+    }
     const aug = getAugStats();
     simTime += dt;
     if (openingPhase === 'DROP_CATCH') {
@@ -4392,11 +4601,12 @@ function tick(now) {
     if (skimTechTimer > 0) skimTechTimer = Math.max(0, skimTechTimer - dt);
     if (invulnTimer > 0) invulnTimer = Math.max(0, invulnTimer - dt);
     if (damageFlash > 0) damageFlash = Math.max(0, damageFlash - dt);
-    if (shakeMag > 0) shakeMag = Math.max(0, shakeMag - 12.0 * dt);
+    if (shakeMag > 0) shakeMag = Math.max(0, shakeMag - 12.0 * rawDt);
     if (stylePopTimer > 0) stylePopTimer = Math.max(0, stylePopTimer - dt);
     if (stylePulseTimer > 0) stylePulseTimer = Math.max(0, stylePulseTimer - dt);
     if (!apexActive && perfectBuffTimer > 0) perfectBuffTimer = Math.max(0, perfectBuffTimer - dt);
     if (!apexActive && elasticCritTimer > 0) elasticCritTimer = Math.max(0, elasticCritTimer - dt);
+    if (!apexActive && bungeeApexTimer > 0) bungeeApexTimer = Math.max(0, bungeeApexTimer - dt);
     if (!apexActive && strikeRushTimer > 0) {
       strikeRushTimer = Math.max(0, strikeRushTimer - dt);
       if (strikeRushTimer <= 0) strikeRushStack = 0;
@@ -5025,8 +5235,8 @@ function tick(now) {
     const targetFov = Math.max(66.0, 228.0 - totalSpeed * 0.80 - lowThrill - wallThrill - rushFov + cartoonZoomFov);
     fovD += (targetFov - fovD) * 8.5 * dt;
 
-    // Step 4 Phase 2 (0.52~1.00s): 지연 추격(Drive-by/Lag-Chase) -> 3인칭 스냅백 카메라 오버라이드
-    applyApexReleaseCamera(dt);
+    // Step 4 Act 2 (1.05~2.05s 매치 컷) & Act 3 (2.05~3.00s 드라이브바이 지연 추격 -> 3인칭 스냅백)
+    applyApexReleaseCamera(rawDt);
   }
 
   // Tactile Action Buttons UI Update
@@ -5339,11 +5549,15 @@ function tick(now) {
     ? drawSpiderManSprite(cb, totalSpeed)
     : { x: LCD_W * 0.5, y: LCD_H - 1, x1: null, y1: null, x2: null, y2: null };
 
-  // [Step 4] 3D 불릿타임 공간감 보조 선분 (과한 이펙트 없이 3D 위치·궤적·거미줄만 선명히 노출)
+  // [Step 4] 3.0초 3-Act 비마법적 웅장한 3D 물리 이펙트 (실제 3D 좌표 투영 -> 시점 선회 시 함께 입체 회전)
   if (apexActive && apexSceneExtras) {
     const defA = APEX_CUT_DEFS[apexId];
     const accCol = defA ? defA.col : PAL.GOLD;
+    const inAct1 = apexTimer < APEX_ACT1_DUR;
+    const inAct2 = apexTimer >= APEX_ACT1_DUR && apexTimer < APEX_ACT2_DUR;
+    const p2 = inAct2 ? Math.max(0.0, Math.min(1.0, (apexTimer - APEX_ACT1_DUR) / (APEX_ACT2_DUR - APEX_ACT1_DUR))) : (apexTimer >= APEX_ACT2_DUR ? 1.0 : 0.0);
     const pPt = projectWorldPt(px, py, pz, cb);
+
     const draw3DSeg = (a, b, col, width) => {
       const pa = projectWorldPt(a.x, a.y, a.z, cb);
       const pb = projectWorldPt(b.x, b.y, b.z, cb);
@@ -5353,6 +5567,29 @@ function tick(now) {
       ctx.strokeStyle = col; ctx.lineWidth = width;
       ctx.beginPath(); ctx.moveTo(pa.x, pa.y); ctx.lineTo(pb.x, pb.y); ctx.stroke();
     };
+
+    // 임의의 3D 평면(uAxis, vAxis) 위 3D 원반/마하콘/충격 링 투영 (ESP32 초경량 폴리라인)
+    const draw3DRing = (cx, cy, cz, ux, uy, uz, vxA, vyA, vzA, rad, segs, col, width) => {
+      let prev = null, first = null;
+      for (let i = 0; i <= segs; i++) {
+        const ang = (i / segs) * Math.PI * 2;
+        const ca = Math.cos(ang) * rad, sa = Math.sin(ang) * rad;
+        const pt = projectWorldPt(cx + ux * ca + vxA * sa, cy + uy * ca + vyA * sa, cz + uz * ca + vzA * sa, cb);
+        if (pt && prev) {
+          ctx.strokeStyle = PAL.INDIGO_OUTLINE; ctx.lineWidth = width + 1.4;
+          ctx.beginPath(); ctx.moveTo(prev.x, prev.y); ctx.lineTo(pt.x, pt.y); ctx.stroke();
+          ctx.strokeStyle = col; ctx.lineWidth = width;
+          ctx.beginPath(); ctx.moveTo(prev.x, prev.y); ctx.lineTo(pt.x, pt.y); ctx.stroke();
+        }
+        if (i === 0) first = pt;
+        prev = pt;
+      }
+      if (prev && first) {
+        ctx.strokeStyle = col; ctx.lineWidth = width;
+        ctx.beginPath(); ctx.moveTo(prev.x, prev.y); ctx.lineTo(first.x, first.y); ctx.stroke();
+      }
+    };
+
     const drawDummyNode = (pt, col, big) => {
       const sp = projectWorldPt(pt.x, pt.y, pt.z, cb);
       if (!sp || sp.z < 2.0) return;
@@ -5365,57 +5602,138 @@ function tick(now) {
     };
 
     if (apexId === 'heavy_suit') {
-      if (apexTimer < APEX_FREEZE_DUR) {
-        draw3DSeg({ x: px, y: apexSceneExtras.dropTopY || (py + 28.0), z: pz }, { x: px, y: py + 2.0, z: pz }, '#ffffff', 1.0);
+      const tp = apexSceneExtras.targetPt || { x: px, y: Math.max(6.0, py - 8.0), z: pz };
+      if (inAct1) {
+        // Act 1: 수직 낙하 궤적선 + 착탄 예정 3D 수평 압축 링
+        draw3DSeg({ x: px, y: apexSceneExtras.dropTopY || (py + 38.0), z: pz }, { x: px, y: py + 2.0, z: pz }, '#ffffff', 1.2);
+        draw3DRing(tp.x, tp.y, tp.z, 1, 0, 0, 0, 0, 1, 10.0, 14, PAL.ORANGE, 1.4);
+      } else {
+        // Act 2~3: 하늘 끝까지 솟는 대형 수직 대기 압착 기둥 + 빌딩 폭 3중 3D 수평 충격 원반
+        const colAlpha = inAct2 ? (1.0 - p2 * 0.25) : Math.max(0.0, 1.0 - (apexTimer - APEX_ACT2_DUR) / 0.35);
+        if (colAlpha > 0.05) {
+          const botPt = projectWorldPt(tp.x, Math.max(1.0, tp.y - 4.0), tp.z, cb);
+          const topPt = projectWorldPt(tp.x, tp.y + 220.0, tp.z, cb);
+          if (botPt && topPt) {
+            const pillarW = Math.max(4, Math.min(34, (11.5 / Math.max(8.0, botPt.z)) * cb.d)) * (1.0 - p2 * 0.38);
+            ctx.strokeStyle = PAL.INDIGO_OUTLINE; ctx.lineWidth = pillarW + 4;
+            ctx.beginPath(); ctx.moveTo(botPt.x, botPt.y); ctx.lineTo(topPt.x, topPt.y); ctx.stroke();
+            ctx.strokeStyle = PAL.ORANGE; ctx.lineWidth = Math.max(2, pillarW);
+            ctx.beginPath(); ctx.moveTo(botPt.x, botPt.y); ctx.lineTo(topPt.x, topPt.y); ctx.stroke();
+            ctx.strokeStyle = '#ffffff'; ctx.lineWidth = Math.max(1.2, pillarW * 0.42);
+            ctx.beginPath(); ctx.moveTo(botPt.x, botPt.y); ctx.lineTo(topPt.x, topPt.y); ctx.stroke();
+          }
+          // 3중 3D 수평 충격 원반 (실제 3D XZ 평면 확장 -> 와이드 컷에서 압도적 규모감)
+          for (let ri = 0; ri < 3; ri++) {
+            const rp = Math.max(0.0, Math.min(1.0, p2 * 1.25 - ri * 0.16));
+            if (rp <= 0.01) continue;
+            const rad = 10.0 + rp * (72.0 + ri * 18.0);
+            const ry = tp.y + ri * 14.0 * rp;
+            draw3DRing(tp.x, ry, tp.z, 1, 0, 0, 0, 0, 1, rad, 16, ri === 0 ? '#ffffff' : (ri === 1 ? PAL.GOLD : PAL.ORANGE), ri === 0 ? 2.0 : 1.3);
+          }
+        }
       }
-      if (apexSceneExtras.isDummy && apexSceneExtras.targetPt) {
-        drawDummyNode(apexSceneExtras.targetPt, PAL.ORANGE, true);
-      }
+      if (apexSceneExtras.isDummy && inAct1) drawDummyNode(tp, PAL.ORANGE, true);
     } else if (apexId === 'overdrive') {
-      if (apexSceneExtras.isDummy && apexSceneExtras.targetPt) {
+      const mSin = apexSceneExtras.mSin !== undefined ? apexSceneExtras.mSin : Math.sin(camYaw);
+      const mCos = apexSceneExtras.mCos !== undefined ? apexSceneExtras.mCos : Math.cos(camYaw);
+      const rx = mCos, rz = -mSin;
+      // 3겹 3D 소닉붐 마하 콘 (진행 방향 수직 평면 위 3D 음속 응결 링)
+      const coneActive = inAct1 || inAct2;
+      if (coneActive) {
+        for (let ci = 0; ci < 3; ci++) {
+          const backDist = (ci * 5.2 + 2.0) + (inAct2 ? p2 * (14.0 + ci * 7.0) : 0.0);
+          const coneRad = (4.2 + ci * 2.8) + (inAct2 ? p2 * (16.0 + ci * 8.0) : 0.0);
+          const cx = px - mSin * backDist, cy = py, cz = pz - mCos * backDist;
+          draw3DRing(cx, cy, cz, rx, 0, rz, 0, 1, 0, coneRad, 14, ci === 0 ? '#ffffff' : PAL.NEON_PINK, ci === 0 ? 1.8 : 1.2);
+        }
+        // 진행 축 관통 3D 유선(Streamlines)
+        if (inAct2) {
+          for (let li = -1; li <= 1; li += 2) {
+            const off = li * (4.5 + p2 * 5.0);
+            draw3DSeg(
+              { x: px - mSin * 26 + rx * off, y: py + li * 2.5, z: pz - mCos * 26 + rz * off },
+              { x: px + mSin * 18 + rx * off * 0.5, y: py + li * 1.2, z: pz + mCos * 18 + rz * off * 0.5 },
+              li > 0 ? '#ffffff' : PAL.NEON_CYAN, 1.1
+            );
+          }
+        }
+      }
+      if (apexSceneExtras.isDummy && apexSceneExtras.targetPt && inAct1) {
         drawDummyNode(apexSceneExtras.targetPt, PAL.NEON_PINK, true);
       }
     } else if (apexId === 'bungee_web') {
-      if (apexTimer < APEX_FREEZE_DUR && apexSceneExtras.anchorPt && handPos) {
-        const ap = projectWorldPt(apexSceneExtras.anchorPt.x, apexSceneExtras.anchorPt.y, apexSceneExtras.anchorPt.z, cb);
+      const anc = apexSceneExtras.anchorPt;
+      if (inAct1 && anc && handPos) {
+        const ap = projectWorldPt(anc.x, anc.y, anc.z, cb);
         if (ap) {
-          ctx.strokeStyle = PAL.INDIGO_OUTLINE; ctx.lineWidth = 2.6;
+          ctx.strokeStyle = PAL.INDIGO_OUTLINE; ctx.lineWidth = 3.0;
           ctx.beginPath(); ctx.moveTo(handPos.x, handPos.y); ctx.lineTo(ap.x, ap.y); ctx.stroke();
-          ctx.strokeStyle = PAL.GOLD; ctx.lineWidth = 1.2;
+          ctx.strokeStyle = PAL.GOLD; ctx.lineWidth = 1.4;
           ctx.beginPath(); ctx.moveTo(handPos.x, handPos.y); ctx.lineTo(ap.x, ap.y); ctx.stroke();
         }
+      } else if (inAct2) {
+        // Act 2: 끊어진 장력 파동 3D 링 3겹 + 양옆 2번 구름 거대 하향 상승 스윕!
+        for (let ri = 0; ri < 3; ri++) {
+          const rp = Math.max(0.0, Math.min(1.0, p2 * 1.2 - ri * 0.18));
+          if (rp <= 0.01) continue;
+          draw3DRing(px, py - 4.0 - ri * 8.0 * rp, pz, 1, 0, 0, 0, 0, 1, 8.0 + rp * (36.0 + ri * 14.0), 14, ri === 0 ? '#ffffff' : PAL.GOLD, 1.4);
+        }
+        if (cloudSpr) {
+          for (let ci = 0; ci < 6; ci++) {
+            const side = (ci & 1) ? 1 : -1;
+            const lanePhase = (p2 * (2.2 + (ci % 3) * 0.45) + ci * 0.31) % 1.0;
+            const cw = Math.round(cloudSpr.width * (1.45 + (ci % 3) * 0.45));
+            const ch = Math.round(cloudSpr.height * (1.45 + (ci % 3) * 0.45));
+            const cxPos = side < 0 ? Math.round(-cw * 0.32 + (ci % 3) * 14) : Math.round(LCD_W - cw * 0.68 - (ci % 3) * 14);
+            // 상승 스윕: 구름이 위에서 아래로 쏟아짐!
+            const cyPos = Math.round(lanePhase * (LCD_H + ch * 2) - ch);
+            ctx.drawImage(cloudSpr, cxPos, cyPos, cw, ch);
+          }
+        }
+      }
+      if (apexSceneExtras.isDummy && apexSceneExtras.targetPt && inAct1) {
+        drawDummyNode(apexSceneExtras.targetPt, PAL.GOLD, true);
       }
     } else if (apexId === 'lasso_swing' && apexSceneExtras.lassoPts) {
       const lPts = apexSceneExtras.lassoPts;
       const tPt = apexSceneExtras.targetPt || { x: px, y: py, z: pz };
-      const pullT = apexTimer < APEX_FREEZE_DUR ? 0.0 : Math.min(1.0, (apexTimer - APEX_FREEZE_DUR) / 0.22);
+      const pullT = inAct1 ? 0.0 : Math.min(1.0, p2 / 0.42);
+      const curPts = [];
       for (let i = 0; i < lPts.length; i++) {
         const lp = lPts[i];
-        const curPt = {
+        curPts.push({
           x: lp.x + (tPt.x - lp.x) * pullT,
           y: lp.y + (tPt.y - lp.y) * pullT,
           z: lp.z + (tPt.z - lp.z) * pullT
-        };
-        const ep = projectWorldPt(curPt.x, curPt.y, curPt.z, cb);
-        if (ep && handPos) {
-          const hx = (i & 1) && handPos.x2 !== null ? handPos.x2 : (handPos.x1 !== null ? handPos.x1 : handPos.x);
-          const hy = (i & 1) && handPos.y2 !== null ? handPos.y2 : (handPos.y1 !== null ? handPos.y1 : handPos.y);
-          ctx.strokeStyle = PAL.INDIGO_OUTLINE; ctx.lineWidth = 2.4;
-          ctx.beginPath(); ctx.moveTo(hx, hy); ctx.lineTo(ep.x, ep.y); ctx.stroke();
-          ctx.strokeStyle = (i & 1) ? '#ffffff' : '#d8b4fe'; ctx.lineWidth = 1.2;
-          ctx.beginPath(); ctx.moveTo(hx, hy); ctx.lineTo(ep.x, ep.y); ctx.stroke();
-        }
-        if (apexSceneExtras.isDummy && pullT < 0.95) {
-          drawDummyNode(curPt, '#d8b4fe', false);
-        }
+        });
       }
-      if (apexSceneExtras.isDummy && apexSceneExtras.targetPt) {
-        drawDummyNode(apexSceneExtras.targetPt, PAL.GOLD, true);
+      if (inAct1 || pullT < 0.99) {
+        // 3D 거미줄 구체망: 방사 거미줄 + 외곽 인접 포획점 연결 고리
+        for (let i = 0; i < curPts.length; i++) {
+          const ep = projectWorldPt(curPts[i].x, curPts[i].y, curPts[i].z, cb);
+          if (ep && handPos) {
+            const hx = (i & 1) && handPos.x2 !== null ? handPos.x2 : (handPos.x1 !== null ? handPos.x1 : handPos.x);
+            const hy = (i & 1) && handPos.y2 !== null ? handPos.y2 : (handPos.y1 !== null ? handPos.y1 : handPos.y);
+            ctx.strokeStyle = PAL.INDIGO_OUTLINE; ctx.lineWidth = 2.4;
+            ctx.beginPath(); ctx.moveTo(hx, hy); ctx.lineTo(ep.x, ep.y); ctx.stroke();
+            ctx.strokeStyle = (i & 1) ? '#ffffff' : '#d8b4fe'; ctx.lineWidth = 1.2;
+            ctx.beginPath(); ctx.moveTo(hx, hy); ctx.lineTo(ep.x, ep.y); ctx.stroke();
+          }
+          draw3DSeg(curPts[i], curPts[(i + 1) % curPts.length], '#d8b4fe', 1.0);
+          if (apexSceneExtras.isDummy) drawDummyNode(curPts[i], '#d8b4fe', false);
+        }
+      } else if (inAct2) {
+        // 압착 폭발 후 대형 3D 팔각 거미줄 충격 링 2겹
+        const expT = Math.max(0.0, Math.min(1.0, (p2 - 0.42) / 0.58));
+        draw3DRing(tPt.x, tPt.y, tPt.z, 1, 0, 0, 0, 0, 1, 10.0 + expT * 64.0, 8, PAL.GOLD, 1.8);
+        draw3DRing(tPt.x, tPt.y, tPt.z, 1, 0, 0, 0, 1, 0, 8.0 + expT * 52.0, 8, '#d8b4fe', 1.3);
       }
+      if (apexSceneExtras.isDummy && inAct1) drawDummyNode(tPt, PAL.GOLD, true);
     } else if (apexId === 'chain_pinball' && apexSceneExtras.chainPts) {
       const cPts = apexSceneExtras.chainPts;
       for (let i = 0; i < cPts.length - 1; i++) {
-        draw3DSeg(cPts[i], cPts[i + 1], (i === cPts.length - 2) ? '#ffffff' : PAL.NEON_PINK, 1.3);
+        const lit = inAct2 && i <= (apexSceneExtras.chainSparkIdx || 0);
+        draw3DSeg(cPts[i], cPts[i + 1], lit ? PAL.GOLD : ((i === cPts.length - 2) ? '#ffffff' : PAL.NEON_PINK), lit ? 1.8 : 1.2);
       }
       for (let i = 0; i < cPts.length; i++) {
         const vp = projectWorldPt(cPts[i].x, cPts[i].y, cPts[i].z, cb);
@@ -5423,27 +5741,46 @@ function tick(now) {
           ctx.fillStyle = PAL.INDIGO_OUTLINE; ctx.fillRect((vp.x - 3) | 0, (vp.y - 3) | 0, 6, 6);
           ctx.fillStyle = i === cPts.length - 1 ? PAL.GOLD : '#ffffff'; ctx.fillRect((vp.x - 2) | 0, (vp.y - 2) | 0, 4, 4);
         }
+        // Act 2: 각 꼭짓점 순차 3D 충격 링 점화
+        if (inAct2 && i <= (apexSceneExtras.chainSparkIdx || -1)) {
+          const localT = Math.max(0.0, Math.min(1.0, (p2 - i * 0.14) / 0.35));
+          if (localT > 0.01 && localT < 1.0) {
+            const maxR = (i === cPts.length - 1) ? 46.0 : 22.0;
+            draw3DRing(cPts[i].x, cPts[i].y, cPts[i].z, 1, 0, 0, 0, 0, 1, 4.0 + localT * maxR, 12, i === cPts.length - 1 ? PAL.GOLD : PAL.NEON_PINK, 1.4);
+          }
+        }
       }
     } else if (apexId === 'elastic') {
       const wp = apexSceneExtras.wallPt;
       const tp = apexSceneExtras.targetPt;
       if (wp && pPt) {
-        draw3DSeg(wp, { x: px, y: py, z: pz }, PAL.EMERALD, 1.4);
-        const wProj = projectWorldPt(wp.x, wp.y, wp.z, cb);
-        if (wProj) {
-          ctx.strokeStyle = PAL.EMERALD; ctx.lineWidth = 1.5;
-          ctx.beginPath();
-          ctx.moveTo(wProj.x - 5, wProj.y - 5); ctx.lineTo(wProj.x + 5, wProj.y + 5);
-          ctx.moveTo(wProj.x + 5, wProj.y - 5); ctx.lineTo(wProj.x - 5, wProj.y + 5);
-          ctx.stroke();
+        draw3DSeg(wp, { x: px, y: py, z: pz }, PAL.EMERALD, 1.5);
+        // 벽면 법선 평면 위 6가닥 3D 방사 균열 크랙
+        const txW = -(wp.nz || 0.0), tzW = (wp.nx || 1.0);
+        const crackLen = inAct2 ? 12.0 : 8.5;
+        for (let ci = 0; ci < 6; ci++) {
+          const ca = (ci / 6) * Math.PI * 2 + 0.25;
+          const dxC = txW * Math.cos(ca) * crackLen;
+          const dyC = Math.sin(ca) * crackLen;
+          const dzC = tzW * Math.cos(ca) * crackLen;
+          draw3DSeg(wp, { x: wp.x + dxC, y: wp.y + dyC, z: wp.z + dzC }, ci & 1 ? '#ffffff' : PAL.EMERALD, 1.2);
+        }
+        if (inAct2) {
+          // 벽면 반발 에너지 V자 3D 충격 링 3겹 전달
+          for (let ri = 0; ri < 3; ri++) {
+            const rp = Math.max(0.0, Math.min(1.0, p2 * 1.3 - ri * 0.18));
+            if (rp <= 0.01) continue;
+            const mx = wp.x + (tp.x - wp.x) * rp;
+            const my = wp.y + (tp.y - wp.y) * rp;
+            const mz = wp.z + (tp.z - wp.z) * rp;
+            draw3DRing(mx, my, mz, txW, 0, tzW, 0, 1, 0, 5.0 + rp * 18.0, 12, ri === 0 ? '#ffffff' : PAL.EMERALD, 1.4);
+          }
         }
       }
-      if (tp && pPt && apexTimer < APEX_FREEZE_DUR) {
-        draw3DSeg({ x: px, y: py, z: pz }, tp, '#ffffff', 1.2);
+      if (tp && pPt && (inAct1 || inAct2)) {
+        draw3DSeg({ x: px, y: py, z: pz }, tp, '#ffffff', 1.3);
       }
-      if (apexSceneExtras.isDummy && tp) {
-        drawDummyNode(tp, accCol, true);
-      }
+      if (apexSceneExtras.isDummy && tp && inAct1) drawDummyNode(tp, accCol, true);
     }
   }
 
@@ -5642,6 +5979,20 @@ function tick(now) {
       ctx.lineTo(LCD_W * 0.5 + Math.cos(ang) * r2, LCD_H * 0.5 + Math.sin(ang) * r2 * 0.55);
       ctx.stroke();
     }
+  }
+
+  // [Step 4] 컷 전환 2프레임 임팩트 스냅 (초경량 벡터 플래시)
+  if (apexActive && apexFlashTimer > 0.0) {
+    const defF = APEX_CUT_DEFS[apexId];
+    ctx.strokeStyle = '#ffffff';
+    ctx.lineWidth = 3;
+    ctx.strokeRect(1.5, 1.5, LCD_W - 3, LCD_H - 3);
+    ctx.strokeStyle = defF ? defF.col : PAL.GOLD;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(0, LCD_H * 0.25); ctx.lineTo(LCD_W, LCD_H * 0.75);
+    ctx.moveTo(LCD_W, LCD_H * 0.25); ctx.lineTo(0, LCD_H * 0.75);
+    ctx.stroke();
   }
 
   const lbBlend = Math.max(strikeCamBlend, openingLetterbox, apexLetterbox);

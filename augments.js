@@ -164,11 +164,11 @@ let damageNumbers = [];      // { x, y, z, text, col, life, maxLife, big }
 let pendingExplosions = [];  // { x, y, z, radius, dmg, col, delay, depth }
 
 // =========================================================================
-// [Step 4] 플레이 방식 변혁 6종 증강 Lv.3(★각성) 1초 불릿타임 3D 오빗 컷씬 정의
-// - 순수 연출 중심 (추가 딜·전투 이득 0 / 8분 기준 3~4회: 글로벌 35s · 개별 70s)
+// [Step 4] 플레이 방식 변혁 6종 증강 Lv.3(★각성) 3초 3-Act 불릿타임 3D 컷씬 정의
+// - 100% 수동 STRIKE(Shift) 적중 트리거 · 순수 연출 중심 (추가 딜 0 / 글로벌 40s · 개별 85s)
 // =========================================================================
-const APEX_GLOBAL_COOLDOWN = 35.0;
-const APEX_AUG_COOLDOWN    = 70.0;
+const APEX_GLOBAL_COOLDOWN = 40.0;
+const APEX_AUG_COOLDOWN    = 85.0;
 const APEX_CUT_IDS = [
   'heavy_suit',
   'overdrive',
