@@ -25,45 +25,58 @@ let bgmGateTimerMs = 0;
 
 // =========================================================================
 // 1. PASSIVE BUZZER SFX NOTE TABLES ([freqHz, durMs], 0 = rest)
+//    vol: 0.0~0.12 (maps to ESP32 PWM duty), cutoff: lowpass Hz for warmth
 // =========================================================================
 const SFX_TABLE = {
-  web_shoot:          { prio: 3,  cd: 65,  notes: [[520, 20], [780, 20], [1180, 26], [1560, 20]] },
-  web_release:        { prio: 3,  cd: 75,  notes: [[660, 22], [990, 24], [1320, 30]] },
-  perfect_release:    { prio: 6,  cd: 120, notes: [[880, 28], [1109, 28], [1319, 34], [1760, 62]] },
-  jump:               { prio: 3,  cd: 75,  notes: [[330, 26], [494, 28], [659, 34]] },
-  bounce:             { prio: 4,  cd: 65,  notes: [[260, 20], [440, 22], [660, 26], [520, 20]] },
+  // High-frequency traversal SFX: ultra-short, soft, warm low-mid (zero ear fatigue)
+  web_shoot:           { prio: 3,  cd: 75,  vol: 0.042, cutoff: 1350, notes: [[240, 14], [370, 16], [494, 14]] },
+  web_release:         { prio: 3,  cd: 85,  vol: 0.036, cutoff: 1250, notes: [[330, 14], [440, 18]] },
+  perfect_release:     { prio: 6,  cd: 130, vol: 0.062, cutoff: 2000, notes: [[440, 18], [659, 20], [880, 34]] },
+  jump:                { prio: 3,  cd: 80,  vol: 0.042, cutoff: 1350, notes: [[220, 16], [330, 20]] },
+  bounce:              { prio: 4,  cd: 70,  vol: 0.058, cutoff: 1650, notes: [[185, 16], [330, 18], [494, 22], [370, 16]] },
 
-  strike_dive:        { prio: 5,  cd: 85,  notes: [[1175, 22], [880, 22], [587, 26], [392, 30], [262, 38]] },
-  strike_pull:        { prio: 5,  cd: 85,  notes: [[784, 22], [0, 12], [1175, 26], [1568, 36]] },
-  strike_hyper:       { prio: 6,  cd: 85,  notes: [[659, 18], [988, 18], [1319, 22], [1976, 46]] },
+  // Combat initiation SFX: distinct weight/speed without shrill square high-end
+  strike_dive:         { prio: 5,  cd: 90,  vol: 0.064, cutoff: 1700, notes: [[523, 16], [349, 18], [220, 22], [110, 30]] },
+  strike_pull:         { prio: 5,  cd: 90,  vol: 0.052, cutoff: 1650, notes: [[392, 14], [0, 10], [587, 22]] },
+  strike_hyper:        { prio: 6,  cd: 90,  vol: 0.062, cutoff: 2050, notes: [[440, 14], [659, 14], [988, 26]] },
 
-  hit:                { prio: 4,  cd: 42,  notes: [[310, 14], [185, 18], [118, 22]] },
-  hit_heavy:          { prio: 5,  cd: 55,  notes: [[440, 14], [220, 18], [131, 24], [82, 38]] },
-  hit_crit:           { prio: 5,  cd: 55,  notes: [[1175, 14], [880, 14], [1568, 22], [2093, 32]] },
-  enemy_kill:         { prio: 6,  cd: 58,  notes: [[523, 20], [392, 20], [294, 24], [196, 28], [131, 42]] },
-  shockwave:          { prio: 6,  cd: 85,  notes: [[165, 28], [123, 32], [98, 40], [73, 50]] },
+  // Combat impact SFX: clear 3-tier punch contrast (normal < heavy < crit)
+  hit:                 { prio: 4,  cd: 48,  vol: 0.058, cutoff: 1650, notes: [[220, 14], [131, 18], [88, 22]] },
+  hit_heavy:           { prio: 5,  cd: 60,  vol: 0.084, cutoff: 1950, notes: [[330, 14], [165, 18], [98, 24], [65, 36]] },
+  hit_crit:            { prio: 5,  cd: 60,  vol: 0.072, cutoff: 2250, notes: [[659, 14], [440, 14], [988, 20], [1319, 28]] },
+  enemy_kill:          { prio: 6,  cd: 65,  vol: 0.068, cutoff: 1850, notes: [[392, 16], [262, 18], [175, 22], [110, 34]] },
+  shockwave:           { prio: 6,  cd: 90,  vol: 0.082, cutoff: 1600, notes: [[165, 24], [117, 28], [87, 36], [65, 48]] },
 
-  rank_up:            { prio: 7,  cd: 180, notes: [[523, 38], [659, 38], [784, 42], [1047, 48], [1319, 92]] },
-  player_hit:         { prio: 8,  cd: 150, notes: [[311, 34], [233, 34], [175, 42], [117, 72]] },
+  // Progression & damage SFX: concise and clean
+  rank_up:             { prio: 7,  cd: 550, vol: 0.056, cutoff: 1850, notes: [[392, 26], [523, 28], [659, 52]] },
+  player_hit:          { prio: 8,  cd: 160, vol: 0.086, cutoff: 1800, notes: [[277, 30], [196, 32], [138, 40], [98, 66]] },
 
-  draft_open:         { prio: 8,  cd: 140, notes: [[587, 42], [740, 42], [880, 48], [1175, 105]] },
-  ui_move:            { prio: 4,  cd: 38,  notes: [[988, 20]] },
-  ui_confirm:         { prio: 8,  cd: 100, notes: [[784, 34], [1047, 42], [1568, 82]] },
+  draft_open:          { prio: 8,  cd: 160, vol: 0.068, cutoff: 2000, notes: [[440, 32], [587, 34], [740, 40], [880, 78]] },
+  ui_move:             { prio: 4,  cd: 42,  vol: 0.044, cutoff: 1700, notes: [[659, 16]] },
+  ui_confirm:          { prio: 8,  cd: 110, vol: 0.070, cutoff: 2100, notes: [[523, 28], [784, 34], [1047, 68]] },
 
-  boss_alarm:         { prio: 9,  cd: 250, notes: [[880, 75], [622, 75], [880, 75], [622, 75], [440, 130]] },
-  boss_groggy:        { prio: 9,  cd: 200, notes: [[1047, 34], [784, 34], [1319, 44], [1568, 52], [2093, 105]] },
-  boss_clear:         { prio: 10, cd: 300, notes: [[523, 68], [659, 68], [784, 68], [1047, 108], [0, 32], [784, 62], [1047, 210]] },
-  gameover:           { prio: 10, cd: 300, notes: [[392, 92], [370, 92], [349, 92], [330, 115], [262, 230]] },
+  boss_alarm:          { prio: 9,  cd: 260, vol: 0.085, cutoff: 2200, notes: [[740, 68], [523, 68], [740, 68], [523, 68], [370, 120]] },
+  boss_groggy:         { prio: 9,  cd: 200, vol: 0.090, cutoff: 2400, notes: [[784, 30], [587, 30], [988, 38], [1319, 46], [1568, 92]] },
+  boss_clear:          { prio: 10, cd: 300, vol: 0.095, cutoff: 2500, notes: [[523, 64], [659, 64], [784, 64], [1047, 102], [0, 28], [784, 58], [1047, 195]] },
+  gameover:            { prio: 10, cd: 300, vol: 0.085, cutoff: 1800, notes: [[349, 88], [330, 88], [311, 88], [294, 108], [220, 210]] },
 
-  // Step 4 Lv.3 APEX CUT: Time-stop freeze + 6 dedicated per-augment ultimate impact signatures
-  apex_freeze:        { prio: 9,  cd: 180, notes: [[1568, 28], [1175, 32], [880, 38], [587, 46], [294, 66], [147, 125]] },
-  apex_release:       { prio: 9,  cd: 180, notes: [[220, 26], [440, 26], [880, 30], [1319, 34], [1760, 72], [220, 52]] },
-  apex_heavy_suit:    { prio: 10, cd: 180, notes: [[880, 22], [440, 24], [220, 28], [110, 38], [73, 52], [62, 88]] },
-  apex_overdrive:     { prio: 10, cd: 180, notes: [[1976, 18], [2637, 18], [3136, 22], [0, 12], [1568, 20], [2349, 24], [3520, 64]] },
-  apex_bungee_web:    { prio: 10, cd: 180, notes: [[294, 20], [440, 20], [659, 22], [988, 24], [1480, 28], [2217, 68]] },
-  apex_web_lasso:     { prio: 10, cd: 180, notes: [[659, 22], [494, 22], [392, 26], [0, 18], [1319, 24], [988, 24], [659, 28], [196, 36], [110, 62]] },
-  apex_chain_pinball: { prio: 10, cd: 180, notes: [[784, 20], [0, 8], [988, 20], [0, 8], [1175, 20], [0, 8], [1397, 20], [0, 8], [1568, 22], [0, 8], [2093, 68]] },
-  apex_elastic:       { prio: 10, cd: 180, notes: [[185, 24], [131, 28], [0, 14], [1047, 20], [1760, 24], [1319, 22], [2349, 64]] }
+  // Step 4 Lv.3 APEX CUT: Time-stop freeze + 6 concept-matched ultimate signatures
+  apex_freeze:         { prio: 9,  cd: 180, vol: 0.086, cutoff: 2200, notes: [[1175, 24], [880, 28], [587, 34], [392, 42], [220, 58], [110, 115]] },
+  apex_release:        { prio: 9,  cd: 180, vol: 0.092, cutoff: 2400, notes: [[220, 24], [440, 24], [880, 28], [1319, 36], [165, 52]] },
+  // 1. 초중력 슈트: 초저음 대기 압착 붕괴 (검증 완료 원형 유지)
+  apex_heavy_suit:     { prio: 10, cd: 180, vol: 0.110, cutoff: 2600, notes: [[880, 22], [440, 24], [220, 28], [110, 38], [73, 52], [62, 88]] },
+  // 2. 오버드라이브: 음속벽 소닉붐(저음) -> 초음속 일섬 찢김 + 번개 잔향
+  apex_overdrive:      { prio: 10, cd: 180, vol: 0.096, cutoff: 2600, notes: [[110, 22], [73, 28], [0, 14], [1319, 16], [1976, 16], [2637, 22], [1480, 14], [2217, 16], [988, 26], [165, 48]] },
+  // 3. 고탄성 번지줄: 팽팽한 거미줄 절단 스냅 -> 구름 돌파 수직 급상승
+  apex_bungee_web:     { prio: 10, cd: 180, vol: 0.096, cutoff: 2300, notes: [[196, 18], [131, 22], [0, 14], [262, 18], [392, 18], [523, 20], [784, 22], [1047, 26], [1568, 56]] },
+  // 4. 올가미 스윙 (2단계 싱크): 수축 장력 차지 -> 중앙 1점 초신성 파열
+  apex_lasso_pull:     { prio: 10, cd: 150, vol: 0.076, cutoff: 1900, notes: [[262, 34], [311, 34], [370, 36], [440, 38], [523, 42], [622, 48]] },
+  apex_lasso_burst:    { prio: 10, cd: 150, vol: 0.110, cutoff: 2500, notes: [[1175, 18], [587, 22], [294, 28], [147, 42], [98, 54], [65, 84]] },
+  // 5. 연쇄 핀볼 (6연타 1:1 싱크): 1~5타 고속 전기 도탄 연타 + 6타 피니시 파열
+  apex_pinball_hit:    { prio: 10, cd: 35,  vol: 0.086, cutoff: 2400, notes: [[392, 14], [659, 16], [880, 20], [196, 22]] },
+  apex_pinball_finish: { prio: 10, cd: 60,  vol: 0.108, cutoff: 2600, notes: [[1047, 18], [1568, 20], [2093, 24], [330, 30], [165, 42], [82, 74]] },
+  // 6. 탄성 반발: 벽 콘크리트 파열(저음 크랙) -> V자 도탄 튕김 -> 카운터 강타
+  apex_elastic:        { prio: 10, cd: 180, vol: 0.105, cutoff: 2400, notes: [[147, 22], [98, 28], [68, 34], [0, 18], [330, 14], [659, 16], [1175, 22], [0, 10], [880, 16], [220, 34], [110, 56]] }
 };
 
 // =========================================================================
@@ -119,7 +132,7 @@ function ensureAudioEngine() {
     // Gentle low-pass to tame harsh desktop/mobile upper harmonics while keeping crisp buzzer bite
     audioFilter = audioCtx.createBiquadFilter();
     audioFilter.type = 'lowpass';
-    audioFilter.frequency.value = 3400;
+    audioFilter.frequency.value = 2200;
     audioFilter.Q.value = 0.7;
 
     audioGain = audioCtx.createGain();
@@ -144,7 +157,7 @@ function unlockAudio() {
   audioUnlocked = true;
 }
 
-function setBuzzerTone(freqHz, gainLevel, isBgm = false) {
+function setBuzzerTone(freqHz, gainLevel, cutoffHz = 2200) {
   if (!audioCtx || !audioOsc || !audioGain) return;
   const now = audioCtx.currentTime;
   if (freqHz <= 0 || gainLevel <= 0) {
@@ -156,8 +169,7 @@ function setBuzzerTone(freqHz, gainLevel, isBgm = false) {
   }
   const clampedFreq = Math.max(55, Math.min(4200, freqHz));
   if (audioFilter) {
-    // Soften BGM harmonics (1500Hz) so it stays unobtrusive behind punchy SFX (3400Hz)
-    audioFilter.frequency.setTargetAtTime(isBgm ? 1500 : 3400, now, 0.005);
+    audioFilter.frequency.setTargetAtTime(cutoffHz || 2200, now, 0.004);
   }
   audioOsc.frequency.setValueAtTime(clampedFreq, now);
   audioGain.gain.setTargetAtTime(gainLevel, now, 0.003);
@@ -200,16 +212,20 @@ function playSfx(id, pitchScale = 1.0) {
   if (sfxActive && sfxActive.prio > def.prio) return;
 
   sfxLastPlayMs[id] = nowMs;
+  const vol = def.vol != null ? def.vol : 0.075;
+  const cutoff = def.cutoff != null ? def.cutoff : 2200;
   sfxActive = {
     notes: def.notes,
     idx: 0,
     timerMs: def.notes[0][1],
     prio: def.prio,
-    pitchScale: pitchScale || 1.0
+    pitchScale: pitchScale || 1.0,
+    vol: vol,
+    cutoff: cutoff
   };
 
   const f0 = def.notes[0][0];
-  setBuzzerTone(f0 > 0 ? f0 * sfxActive.pitchScale : 0, 0.11, false);
+  setBuzzerTone(f0 > 0 ? f0 * sfxActive.pitchScale : 0, vol, cutoff);
 }
 
 function resetAudioForNewRun() {
@@ -242,7 +258,7 @@ function updateAudio(rawDt) {
         const note = sfxActive.notes[sfxActive.idx];
         sfxActive.timerMs = note[1];
         const freq = note[0] > 0 ? note[0] * sfxActive.pitchScale : 0;
-        setBuzzerTone(freq, 0.11, false);
+        setBuzzerTone(freq, sfxActive.vol, sfxActive.cutoff);
       }
     }
     return;
@@ -286,7 +302,7 @@ function updateAudio(rawDt) {
   if (bgmGateTimerMs > 0) {
     bgmGateTimerMs -= dtMs;
     if (bgmGateTimerMs <= 0 && audioCurFreq !== 0) {
-      setBuzzerTone(0, 0, true);
+      setBuzzerTone(0, 0, 1450);
     }
   }
 
@@ -298,6 +314,6 @@ function updateAudio(rawDt) {
     bgmGateTimerMs = freq > 0 ? stepDurMs * 0.56 : 0;
     // Gentle background volume (0.016) so SFX clearly pop over the music
     const bgmGain = (typeof isApexAct2Phase === 'function' && isApexAct2Phase()) ? 0.008 : 0.016;
-    setBuzzerTone(freq, freq > 0 ? bgmGain : 0, true);
+    setBuzzerTone(freq, freq > 0 ? bgmGain : 0, 1450);
   }
 }

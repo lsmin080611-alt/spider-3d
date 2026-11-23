@@ -818,8 +818,13 @@ function updateApexCutFreeze(rawDt) {
     apexAct2Started = true;
     apexFlashTimer = 0.055; // 매치 컷 2프레임 임팩트 스냅
     if (typeof playSfx === 'function') {
-      const apexSfxId = (typeof SFX_TABLE !== 'undefined' && SFX_TABLE['apex_' + apexId]) ? ('apex_' + apexId) : 'apex_release';
-      playSfx(apexSfxId);
+      if (apexId === 'lasso_swing') {
+        playSfx('apex_lasso_pull');
+      } else if (apexId !== 'chain_pinball') {
+        // chain_pinball fires 6 individual hit/finish SFX synced 1:1 in applyApexReleaseCamera
+        const apexSfxId = (typeof SFX_TABLE !== 'undefined' && SFX_TABLE['apex_' + apexId]) ? ('apex_' + apexId) : 'apex_release';
+        playSfx(apexSfxId);
+      }
     }
     const def = APEX_CUT_DEFS[apexId];
     const accCol = def ? def.col : PAL.GOLD;
@@ -920,12 +925,13 @@ function applyApexReleaseCamera(rawDt) {
     if (apexId === 'lasso_swing' && apexSceneExtras && !apexSceneExtras.lassoBurstDone && p2 >= 0.42) {
       apexSceneExtras.lassoBurstDone = true;
       apexFlashTimer = 0.05;
+      if (typeof playSfx === 'function') playSfx('apex_lasso_burst');
       const tp = apexSceneExtras.targetPt || { x: px, y: py, z: pz };
       shakeMag = Math.max(shakeMag, 5.8);
       spawnSparks(tp.x, tp.y, tp.z, PAL.GOLD, 18, 55);
       shockwaves.push({ x: tp.x, y: tp.y, z: tp.z, r: 8, maxR: 135, life: 0.55, maxLife: 0.55, col: '#d8b4fe' });
     }
-    // 연쇄 핀볼: 0.11s 간격으로 6개 꼭짓점 순차 정전기 번개 점화
+    // 연쇄 핀볼: 0.14s 간격으로 6개 꼭짓점 순차 정전기 번개 + 6연타 사운드 점화
     if (apexId === 'chain_pinball' && apexSceneExtras && apexSceneExtras.chainPts) {
       const cPts = apexSceneExtras.chainPts;
       const wantIdx = Math.min(cPts.length - 1, Math.floor(p2 / 0.14));
@@ -941,6 +947,9 @@ function applyApexReleaseCamera(rawDt) {
         if (k === cPts.length - 1) {
           shakeMag = Math.max(shakeMag, 5.2);
           shockwaves.push({ x: pt.x, y: pt.y, z: pt.z, r: 6, maxR: 95, life: 0.45, maxLife: 0.45, col: PAL.GOLD });
+          if (typeof playSfx === 'function') playSfx('apex_pinball_finish');
+        } else {
+          if (typeof playSfx === 'function') playSfx('apex_pinball_hit', 0.92 + k * 0.13);
         }
       }
     }
