@@ -810,19 +810,30 @@ function updateApexCutFreeze(rawDt) {
     shakeMag = Math.max(shakeMag, 4.8);
     spawnSparks(tPt.x, tPt.y, tPt.z, accCol, 16, 46);
     if (apexId === 'heavy_suit') {
-      shakeMag = Math.max(shakeMag, 6.2);
-      shockwaves.push({ x: tPt.x, y: tPt.y, z: tPt.z, r: 8, maxR: 120, life: 0.90, maxLife: 0.90, col: PAL.ORANGE });
+      shakeMag = Math.max(shakeMag, 6.4);
+      spawnSparks(tPt.x, tPt.y, tPt.z, PAL.GOLD, 20, 62);
+      shockwaves.push({ x: tPt.x, y: tPt.y, z: tPt.z, r: 8, maxR: 130, life: 0.90, maxLife: 0.90, col: PAL.ORANGE });
     } else if (apexId === 'overdrive') {
+      shakeMag = Math.max(shakeMag, 5.8);
       const mSin = apexSceneExtras ? apexSceneExtras.mSin : Math.sin(camYaw);
       const mCos = apexSceneExtras ? apexSceneExtras.mCos : Math.cos(camYaw);
-      spawnLightningBolt(px - mSin * 20, py, pz - mCos * 20, tPt.x + mSin * 14, tPt.y, tPt.z + mCos * 14, PAL.NEON_PINK, 0.45);
-      spawnLightningBolt(px - mSin * 12, py + 3, pz - mCos * 12, tPt.x + mSin * 8, tPt.y - 2, tPt.z + mCos * 8, '#ffffff', 0.38);
+      const rxO = mCos, rzO = -mSin;
+      spawnLightningBolt(px - mSin * 26, py, pz - mCos * 26, tPt.x + mSin * 18, tPt.y, tPt.z + mCos * 18, PAL.NEON_PINK, 0.62);
+      spawnLightningBolt(px - mSin * 18 + rxO * 4, py + 3.5, pz - mCos * 18 + rzO * 4, tPt.x + mSin * 14 - rxO * 3, tPt.y - 2.5, tPt.z + mCos * 14 - rzO * 3, '#ffffff', 0.56);
+      spawnLightningBolt(px - mSin * 20 - rxO * 4, py - 3.0, pz - mCos * 20 - rzO * 4, tPt.x + mSin * 12 + rxO * 3, tPt.y + 3.0, tPt.z + mCos * 12 + rzO * 3, PAL.NEON_CYAN, 0.54);
+      spawnLightningBolt(px - mSin * 12, py + 5.0, pz - mCos * 12, tPt.x + mSin * 16, tPt.y - 4.0, tPt.z + mCos * 16, PAL.GOLD, 0.50);
     } else if (apexId === 'bungee_web') {
-      shockwaves.push({ x: px, y: py, z: pz, r: 6, maxR: 75, life: 0.65, maxLife: 0.65, col: PAL.GOLD });
+      shakeMag = Math.max(shakeMag, 5.4);
+      spawnSparks(px, py, pz, PAL.GOLD, 22, 58);
+      shockwaves.push({ x: px, y: py, z: pz, r: 8, maxR: 105, life: 0.78, maxLife: 0.78, col: PAL.GOLD });
     } else if (apexId === 'elastic' && apexSceneExtras && apexSceneExtras.wallPt) {
+      shakeMag = Math.max(shakeMag, 5.8);
       const wp = apexSceneExtras.wallPt;
-      spawnLightningBolt(wp.x, wp.y, wp.z, px, py, pz, PAL.EMERALD, 0.48);
-      spawnLightningBolt(px, py, pz, tPt.x, tPt.y, tPt.z, '#ffffff', 0.48);
+      spawnSparks(wp.x, wp.y, wp.z, PAL.EMERALD, 20, 56);
+      spawnLightningBolt(wp.x, wp.y, wp.z, px, py, pz, PAL.EMERALD, 0.62);
+      spawnLightningBolt(wp.x, wp.y + 3.0, wp.z, px, py - 2.0, pz, '#ffffff', 0.54);
+      spawnLightningBolt(px, py, pz, tPt.x, tPt.y, tPt.z, '#ffffff', 0.62);
+      spawnLightningBolt(px, py + 2.5, pz, tPt.x, tPt.y - 2.5, tPt.z, PAL.EMERALD, 0.54);
     }
     if (apexAct2Cam) {
       apexCamX = apexAct2Cam.x;
