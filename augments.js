@@ -163,6 +163,50 @@ let lightningBolts = [];     // { x1, y1, z1, x2, y2, z2, life, maxLife, col }
 let damageNumbers = [];      // { x, y, z, text, col, life, maxLife, big }
 let pendingExplosions = [];  // { x, y, z, radius, dmg, col, delay, depth }
 
+// =========================================================================
+// [Step 4] 플레이 방식 변혁 6종 증강 Lv.3(★각성) 1초 불릿타임 3D 오빗 컷씬 정의
+// - 순수 연출 중심 (추가 딜·전투 이득 0 / 8분 기준 3~4회: 글로벌 35s · 개별 70s)
+// =========================================================================
+const APEX_GLOBAL_COOLDOWN = 35.0;
+const APEX_AUG_COOLDOWN    = 70.0;
+const APEX_CUT_IDS = [
+  'heavy_suit',
+  'overdrive',
+  'bungee_web',
+  'lasso_swing',
+  'chain_pinball',
+  'elastic'
+];
+const APEX_CUT_DEFS = {
+  heavy_suit: {
+    id: 'heavy_suit', name: '초중력 슈트', title: 'GRAVITY ZERO',
+    col: '#ff9436', pose1: 'APEX_SLAM', pose2: 'FLIP', spin2: true
+  },
+  overdrive: {
+    id: 'overdrive', name: '오버드라이브', title: 'MACH BREAK',
+    col: '#ff5cf4', pose1: 'APEX_MACH', pose2: 'APEX_MACH', spin2: false
+  },
+  bungee_web: {
+    id: 'bungee_web', name: '고탄성 번지줄', title: 'SKY SLINGSHOT',
+    col: '#ffe55c', pose1: 'DROP_HERO', pose2: 'FLIP', spin2: true
+  },
+  lasso_swing: {
+    id: 'lasso_swing', name: '올가미 스윙', title: 'WEB SUPERNOVA',
+    col: '#a78bfa', pose1: 'STRIKE_TWOWEB', pose2: 'FLIP', spin2: true
+  },
+  chain_pinball: {
+    id: 'chain_pinball', name: '연쇄 핀볼', title: 'PHANTOM PINBALL',
+    col: '#ff5cf4', pose1: 'STRIKE_SPIN', pose2: 'STRIKE_SPIN', spin2: true
+  },
+  elastic: {
+    id: 'elastic', name: '탄성 반발', title: 'RICOCHET COUNTER',
+    col: '#4ade80', pose1: 'APEX_RICOCHET', pose2: 'STRIKE_DROPKICK', spin2: false
+  }
+};
+let apexGlobalCd = 0.0;
+let apexAugCds = {};
+let apexTestCycleIdx = 0;
+
 // 특정 증강 카드의 현재 레벨 반환 (미보유 시 0)
 function getLv(id) {
   if (augLevels[id] === undefined) {
@@ -358,6 +402,9 @@ function resetAugments() {
   lightningBolts = [];
   damageNumbers = [];
   pendingExplosions = [];
+
+  apexGlobalCd = 0.0;
+  apexAugCds = {};
 }
 
 // =========================================================================

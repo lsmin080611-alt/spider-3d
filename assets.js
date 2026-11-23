@@ -871,6 +871,41 @@
         api.setPx(14, 20, 5); api.setPx(15, 20, 5); api.setPx(14, 21, 5); api.setPx(15, 21, 5);
         return { handX: 2, handY: 18 };
       });
+
+      // === Step 4 Awakened Apex Cut Dedicated Poses ===
+      // 초중력 슈트: 수직 메테오 찍기 착탄 포즈 (오른주먹+무릎 하향 집중, 역광 하이라이트)
+      spideySprites.APEX_SLAM = bakeSpideyPose((api) => {
+        api.drawLimb(9, 13, 4, 8, 1.6, 3, 4);     api.drawLimb(4, 8, 7, 3, 1.5, 1, 2);
+        api.drawLimb(14, 14, 19, 12, 1.6, 3, 4);  api.drawLimb(19, 12, 18, 19, 1.5, 1, 2);
+        api.drawLimb(12, 9, 12, 16, 2.7, 3, 4);   api.drawLimb(12, 11, 12, 17, 2.1, 1, 2);
+        api.drawLimb(9, 12, 5, 18, 1.5, 1, 2);    api.drawLimb(14, 14, 12, 25, 1.9, 1, 2);
+        api.setPx(12, 25, 6); api.setPx(11, 24, 6); api.setPx(13, 24, 6);
+        api.setPx(6, 4, 7); api.setPx(19, 11, 7);
+        drawHead(api, 12, 11);
+        return { handX: 12, handY: 25 };
+      });
+
+      // 오버드라이브: 초음속 수평 관통 대시 포즈 (공기를 가르는 유선형 전방 돌진)
+      spideySprites.APEX_MACH = bakeSpideyPose((api) => {
+        api.drawLimb(10, 14, 5, 13, 1.6, 3, 4);   api.drawLimb(5, 13, 1, 12, 1.4, 1, 2);
+        api.drawLimb(11, 16, 6, 17, 1.5, 3, 4);   api.drawLimb(6, 17, 2, 19, 1.4, 1, 2);
+        api.drawLimb(9, 14, 16, 13, 2.6, 3, 4);   api.drawLimb(12, 13, 17, 13, 2.1, 1, 2);
+        api.drawLimb(16, 13, 23, 11, 1.8, 1, 2);  api.drawLimb(12, 15, 6, 10, 1.4, 1, 2);
+        api.setPx(22, 11, 6); api.setPx(23, 11, 6); api.setPx(16, 10, 7);
+        drawHead(api, 18, 10);
+        return { handX: 23, handY: 11 };
+      });
+
+      // 탄성 반발: 벽 박차기 역전 카운터 킥 포즈 (뒷발 벽 반발 + 앞발 전방 킥)
+      spideySprites.APEX_RICOCHET = bakeSpideyPose((api) => {
+        api.drawLimb(10, 15, 5, 19, 1.6, 3, 4);   api.drawLimb(5, 19, 3, 24, 1.5, 1, 2);
+        api.drawLimb(13, 14, 18, 11, 1.7, 3, 4);  api.drawLimb(18, 11, 23, 8, 1.7, 1, 2);
+        api.drawLimb(10, 11, 13, 15, 2.6, 3, 4);  api.drawLimb(10, 10, 13, 14, 2.0, 1, 2);
+        api.drawLimb(9, 12, 4, 9, 1.4, 1, 2);     api.drawLimb(13, 11, 18, 16, 1.4, 1, 2);
+        api.setPx(22, 8, 6); api.setPx(23, 8, 6); api.setPx(3, 23, 7);
+        drawHead(api, 9, 8);
+        return { handX: 23, handY: 8 };
+      });
     }
 
     function bakePropSprites() {

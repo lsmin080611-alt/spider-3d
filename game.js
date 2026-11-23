@@ -144,6 +144,34 @@ let openingCloudRush = 0.0;
 let openingPoseRadial = 0.0;
 let gameOverReason = '';
 
+// Step 4: 플레이 방식 변혁 6종 증강 Lv.3(★각성) 1초 불릿타임 3D 오빗 컷씬 상태
+const APEX_FREEZE_DUR = 0.52;   // Phase 1: 완전 0% 시간정지 + 3D 시점 선회
+const APEX_TOTAL_DUR  = 1.00;   // Phase 2: 0.52~1.00s 시간 해제 + 지연 추격 스냅백
+let btnApexTest = null;
+let apexActive = false;
+let apexId = '';
+let apexTimer = 0.0;
+let apexLetterbox = 0.0;
+let apexCamBlend = 0.0;
+let apexCamX = 0.0, apexCamY = 0.0, apexCamZ = 0.0;
+let apexAnchorX = 0.0, apexAnchorY = 0.0, apexAnchorZ = 0.0;
+let apexStartAng = 0.0;
+let apexOrbitArc = 0.85;
+let apexOrbitRadius = 16.0;
+let apexOrbitRadiusEnd = 13.5;
+let apexStartElev = 0.0;
+let apexEndElev = 0.0;
+let apexTargetRoll = 0.14;
+let apexFreezeFov = 192.0;
+let apexReleaseFov = 112.0;
+let apexHoldCamX = 0.0, apexHoldCamY = 0.0, apexHoldCamZ = 0.0;
+let apexReleaseTriggered = false;
+let apexIsTest = false;
+let apexTestLabel = '';
+let apexSceneExtras = null;
+let lastElasticWallPt = null;   // 최근 벽 반사 3D 좌표 { x, y, z, nx, nz }
+let chainPathPts = [];          // 연쇄 핀볼 3D 경로 좌표 기록
+
 // Inputs
 const keys = {};
 let joyX = 0, joyY = 0, swingHeld = false;
@@ -726,7 +754,7 @@ function updateBossSystem(dt, bList, oldX, oldY, oldZ, isStrikeProtected) {
     b.x += (safeG.x - b.x) * Math.min(1.0, 4.0 * dt);
     b.z += (safeG.z - b.z) * Math.min(1.0, 4.0 * dt);
     b.y += ((95.0 + Math.sin(simTime * 3.5) * 1.8) - b.y) * Math.min(1.0, 4.5 * dt);
-    bossPhaseTimer -= dt;
+    if (!apexActive) bossPhaseTimer -= dt;
     if (bossPhaseTimer <= 0) {
       startBossEvadeTurn();
     }
@@ -734,7 +762,7 @@ function updateBossSystem(dt, bList, oldX, oldY, oldZ, isStrikeProtected) {
   }
 
   // === EVADE TURN (40초 압박 + 접근 방해 기믹) ===
-  bossPhaseTimer -= dt;
+  if (!apexActive) bossPhaseTimer -= dt;
 
   const sideSwing = Math.sin(simTime * 0.72) * 34.0;
   const desiredDist = bossStage >= 2 ? 128.0 : 120.0;
@@ -1292,6 +1320,7 @@ function resetGame() {
   runTimeRemaining = RUN_DURATION;
   runTimerZeroTriggered = false;
   resetBossState();
+  resetApexCutState();
   stylePoints = 0.0;
   styleRankIdx = 0;
   peakStyleRankIdx = 0;
@@ -1335,6 +1364,430 @@ function resetGame() {
   }
   peakYBeforeSwing = py;
   swingMinY = py;
+}
+
+// =========================================================================
+// [Step 4] 플레이 방식 변혁 6종 증강 Lv.3(★각성) 1초 불릿타임 3D 오빗 컷씬 엔진
+// - Phase 1 (0.00~0.52s): 완전 0% 시간정지 + 3D 공간 시점 선회(Orbit) + 레터박스
+// - Phase 2 (0.52~1.00s): 시간 해제 + 지연 추격(Drive-by/Lag-Chase) + 광각 속도감 복귀
+// - 순수 연출 중심 (추가 딜 0 / 타이머 정지 / 종료 후 0.65s 안전 무적만 보장)
+// =========================================================================
+function resetApexCutState() {
+  apexActive = false;
+  apexId = '';
+  apexTimer = 0.0;
+  apexLetterbox = 0.0;
+  apexCamBlend = 0.0;
+  apexReleaseTriggered = false;
+  apexIsTest = false;
+  apexTestLabel = '';
+  apexSceneExtras = null;
+  lastElasticWallPt = null;
+  chainPathPts = [];
+}
+
+function isApexFreezePhase() {
+  return apexActive && apexTimer < APEX_FREEZE_DUR;
+}
+
+function isApexCamBlocked(cx, cy, cz, bList) {
+  if (cy < 3.8) return true;
+  if (!bList) return false;
+  for (let i = 0; i < bList.length; i++) {
+    const b = bList[i];
+    if (cy < b.bh + 3.5) {
+      const hw = b.bw * 0.5 + 5.5;
+      const hd = b.bd * 0.5 + 5.5;
+      if (cx > b.bx - hw && cx < b.bx + hw && cz > b.bz - hd && cz < b.bz + hd) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+function pickSafeApexOrbitArc(ancX, ancY, ancZ, startAng, rawArc, r0, r1, e0, e1, bList) {
+  const testArc = (arcVal, radScale, elevAdd) => {
+    for (let s = 0; s <= 3; s++) {
+      const u = s / 3.0;
+      const ang = startAng + arcVal * u;
+      const rad = (r0 + (r1 - r0) * u) * radScale;
+      const tx = ancX + Math.sin(ang) * rad;
+      const ty = Math.max(4.5, ancY + e0 + (e1 - e0) * u + elevAdd);
+      const tz = ancZ + Math.cos(ang) * rad;
+      if (isApexCamBlocked(tx, ty, tz, bList)) return false;
+    }
+    return true;
+  };
+  if (testArc(rawArc, 1.0, 0.0)) return { arc: rawArc, radScale: 1.0, elevAdd: 0.0 };
+  if (testArc(-rawArc, 1.0, 0.0)) return { arc: -rawArc, radScale: 1.0, elevAdd: 0.0 };
+  if (testArc(rawArc, 0.76, 4.5)) return { arc: rawArc, radScale: 0.76, elevAdd: 4.5 };
+  if (testArc(-rawArc, 0.76, 4.5)) return { arc: -rawArc, radScale: 0.76, elevAdd: 4.5 };
+  return { arc: rawArc * 0.65, radScale: 0.68, elevAdd: 6.5 };
+}
+
+function tryTriggerApexCut(augId, payload, forceTest = false) {
+  const def = APEX_CUT_DEFS[augId];
+  if (!def) return false;
+  if (gameOver || augmentDraftOpen) return false;
+  if (!forceTest) {
+    if (openingPhase !== 'ACTIVE' || apexActive) return false;
+    if (bossActive && (bossPhase === 'INTRO' || bossPhase === 'DEFEATED')) return false;
+    if (getLv(augId) < MAX_AUG_LEVEL) return false;
+    if (apexGlobalCd > 0.0 || (apexAugCds[augId] || 0.0) > 0.0) return false;
+  } else {
+    if (isOpeningCutscene()) return false;
+    if (apexActive) resetApexCutState();
+  }
+
+  const w = getNearbyWorld();
+  const bList = w ? w.buildings : [];
+  const data = payload || {};
+  const sinY = Math.sin(camYaw), cosY = Math.cos(camYaw);
+  const rightX = cosY, rightZ = -sinY;
+
+  apexActive = true;
+  apexId = augId;
+  apexTimer = 0.0;
+  apexReleaseTriggered = false;
+  apexIsTest = !!forceTest;
+  apexTestLabel = data.testLabel || '';
+  apexLetterbox = 0.35;
+  apexCamBlend = 1.0;
+
+  // 쿨타임 적용 (실전 발동 시에만: 글로벌 35s · 증강별 개별 70s)
+  if (!forceTest) {
+    apexGlobalCd = APEX_GLOBAL_COOLDOWN;
+    apexAugCds[augId] = APEX_AUG_COOLDOWN;
+  }
+
+  // 기본 타겟 좌표 (없으면 전방 14m 지점)
+  const targetPt = data.targetPt || {
+    x: px + sinY * 13.0,
+    y: Math.max(8.0, py + (augId === 'heavy_suit' ? -6.5 : 1.0)),
+    z: pz + cosY * 13.0
+  };
+
+  let rawArc = 0.88;
+  let r0 = 16.5, r1 = 13.5, e0 = 1.5, e1 = 0.5;
+  let startAng = camYaw + Math.PI + 0.35;
+  let roll = 0.14;
+  let freezeFov = 192.0;
+  let releaseFov = 112.0;
+
+  const extras = { targetPt: targetPt, isDummy: !!data.isDummy };
+
+  if (augId === 'heavy_suit') {
+    // 초중력 슈트: 적 아래 로우 앵글에서 올려다보며 수직 높이 & 상하 3D 격차 노출
+    apexAnchorX = px * 0.48 + targetPt.x * 0.52;
+    apexAnchorY = Math.max(6.0, py * 0.45 + targetPt.y * 0.55);
+    apexAnchorZ = pz * 0.48 + targetPt.z * 0.52;
+    startAng = camYaw + Math.PI * 0.65;
+    rawArc = 0.94;
+    r0 = 16.5; r1 = 13.8; e0 = -5.5; e1 = -2.0;
+    roll = 0.15;
+    freezeFov = 196.0; releaseFov = 112.0;
+    extras.dropTopY = py + 28.0;
+  } else if (augId === 'overdrive') {
+    // 오버드라이브: 측면 90° -> 전방 45° 슬라이드 + 3D 도트 잔상 5개 박제 -> 드라이브바이 지연 추격
+    const hSpd = Math.hypot(vx, vz);
+    const moveYaw = hSpd > 6.0 ? Math.atan2(vx, vz) : camYaw;
+    const mSin = Math.sin(moveYaw), mCos = Math.cos(moveYaw);
+    apexAnchorX = px * 0.52 + targetPt.x * 0.48;
+    apexAnchorY = py * 0.52 + targetPt.y * 0.48;
+    apexAnchorZ = pz * 0.52 + targetPt.z * 0.48;
+    startAng = moveYaw + Math.PI * 0.55;
+    rawArc = -0.92;
+    r0 = 17.5; r1 = 14.2; e0 = 1.6; e1 = 0.4;
+    roll = -0.18;
+    freezeFov = 188.0; releaseFov = 108.0;
+
+    // 3D 공중 잔상 5개를 진행 반대 방향으로 일렬 박제 (시점 회전 시 3D 궤적 강조)
+    for (let gi = 1; gi <= 5; gi++) {
+      afterimages.push({
+        x: px - mSin * (gi * 3.4),
+        y: py - Math.max(-1.6, Math.min(1.6, vy * 0.015)) * gi,
+        z: pz - mCos * (gi * 3.4),
+        poseKey: 'APEX_MACH',
+        rot: 0,
+        tone: (gi & 1),
+        life: 0.72 - gi * 0.05
+      });
+    }
+  } else if (augId === 'bungee_web') {
+    // 고탄성 번지줄: 발아래 앙각 48° 선회로 빌딩 숲과 아찔한 상승 깊이 노출
+    const ancPt = data.anchorPt || { x: px + rightX * 26.0, y: py + 42.0, z: pz + sinY * 22.0 };
+    apexAnchorX = px;
+    apexAnchorY = Math.max(10.0, py - 1.5);
+    apexAnchorZ = pz;
+    startAng = camYaw + Math.PI * 0.78;
+    rawArc = 0.86;
+    r0 = 15.0; r1 = 12.8; e0 = -7.5; e1 = -10.0;
+    roll = -0.16;
+    freezeFov = 192.0; releaseFov = 110.0;
+    extras.anchorPt = ancPt;
+  } else if (augId === 'lasso_swing') {
+    // 올가미 스윙: 포획된 적 6기+와 팽팽한 3D 거미줄 그물망 바깥에서 60° 선회
+    const lPts = (data.lassoPts && data.lassoPts.length > 0) ? data.lassoPts : [];
+    let sx = px, sy = py, sz = pz;
+    for (let i = 0; i < lPts.length; i++) {
+      sx += lPts[i].x; sy += lPts[i].y; sz += lPts[i].z;
+    }
+    const cnt = 1 + lPts.length;
+    apexAnchorX = (sx / cnt) * 0.55 + targetPt.x * 0.45;
+    apexAnchorY = Math.max(8.0, (sy / cnt) * 0.55 + targetPt.y * 0.45);
+    apexAnchorZ = (sz / cnt) * 0.55 + targetPt.z * 0.45;
+    startAng = camYaw + Math.PI * 0.70;
+    rawArc = 1.05;
+    r0 = 22.0; r1 = 17.5; e0 = 6.2; e1 = 2.8;
+    roll = 0.13;
+    freezeFov = 182.0; releaseFov = 114.0;
+    extras.lassoPts = lPts;
+  } else if (augId === 'chain_pinball') {
+    // 연쇄 핀볼: 방금 튕겨 다닌 6개 3D 지그재그 경로를 상공 줌아웃 상태에서 54° 선회
+    const cPts = (data.chainPts && data.chainPts.length >= 2) ? data.chainPts : [
+      { x: px - sinY * 18, y: py + 4, z: pz - cosY * 18 },
+      { x: px, y: py, z: pz }
+    ];
+    let sx = 0, sy = 0, sz = 0;
+    for (let i = 0; i < cPts.length; i++) {
+      sx += cPts[i].x; sy += cPts[i].y; sz += cPts[i].z;
+    }
+    apexAnchorX = (sx / cPts.length) * 0.55 + px * 0.45;
+    apexAnchorY = Math.max(10.0, (sy / cPts.length) * 0.55 + py * 0.45);
+    apexAnchorZ = (sz / cPts.length) * 0.55 + pz * 0.45;
+    startAng = camYaw + Math.PI * 0.68;
+    rawArc = 0.94;
+    r0 = 25.0; r1 = 19.5; e0 = 10.0; e1 = 6.0;
+    roll = -0.14;
+    freezeFov = 176.0; releaseFov = 114.0;
+    extras.chainPts = cPts;
+  } else if (augId === 'elastic') {
+    // 탄성 반발: 빌딩 벽면 <-> 캐릭터 <-> 타겟 V자 3D 구도를 벽면 평행 시점에서 46° 선회
+    const wallPt = data.wallPt || lastElasticWallPt || {
+      x: px - rightX * 14.0 - sinY * 6.0,
+      y: Math.max(8.0, py - 1.5),
+      z: pz - rightZ * 14.0 - cosY * 6.0
+    };
+    apexAnchorX = px * 0.50 + targetPt.x * 0.30 + wallPt.x * 0.20;
+    apexAnchorY = Math.max(7.0, py * 0.55 + targetPt.y * 0.25 + wallPt.y * 0.20);
+    apexAnchorZ = pz * 0.50 + targetPt.z * 0.30 + wallPt.z * 0.20;
+    const wAng = Math.atan2(px - wallPt.x, pz - wallPt.z);
+    startAng = wAng + 0.55;
+    rawArc = 0.82;
+    r0 = 17.0; r1 = 13.8; e0 = 2.0; e1 = 0.8;
+    roll = 0.16;
+    freezeFov = 190.0; releaseFov = 112.0;
+    extras.wallPt = wallPt;
+  }
+
+  // 건물 관통 0% 안전 오빗 방향 자동 선택
+  const safe = pickSafeApexOrbitArc(apexAnchorX, apexAnchorY, apexAnchorZ, startAng, rawArc, r0, r1, e0, e1, bList);
+  apexStartAng = startAng;
+  apexOrbitArc = safe.arc;
+  apexOrbitRadius = r0 * safe.radScale;
+  apexOrbitRadiusEnd = r1 * safe.radScale;
+  apexStartElev = e0 + safe.elevAdd;
+  apexEndElev = e1 + safe.elevAdd;
+  apexTargetRoll = (safe.arc >= 0 ? Math.abs(roll) : -Math.abs(roll));
+  apexFreezeFov = freezeFov;
+  apexReleaseFov = releaseFov;
+  apexSceneExtras = extras;
+
+  // 시작 프레임 카메라 위치 즉시 동기화 (첫 프레임 튐 방지)
+  apexCamX = apexAnchorX + Math.sin(apexStartAng) * apexOrbitRadius;
+  apexCamY = Math.max(4.2, apexAnchorY + apexStartElev);
+  apexCamZ = apexAnchorZ + Math.cos(apexStartAng) * apexOrbitRadius;
+  const dx0 = apexAnchorX - apexCamX, dy0 = apexAnchorY - apexCamY, dz0 = apexAnchorZ - apexCamZ;
+  camLagYaw = Math.atan2(dx0, dz0);
+  camPitch = Math.max(-1.05, Math.min(0.85, Math.atan2(dy0, Math.hypot(dx0, dz0) || 1.0)));
+  camRoll = apexTargetRoll * 0.65;
+  fovD = apexFreezeFov;
+  return true;
+}
+
+// PC(Key X) & 모바일 상단 버튼(★CUT) 전용 6종 순환 테스트 시연기
+function triggerApexTestCycle() {
+  if (gameOver || augmentDraftOpen) return;
+  if (openingPhase !== 'ACTIVE') {
+    hasSeenRoofIntro = true;
+    openingPhase = 'ACTIVE';
+    openingCamBlend = 0.0;
+    openingLetterbox = 0.0;
+    openingCloudRush = 0.0;
+    openingPoseRadial = 0.0;
+    px = 0.0; py = 128.0; pz = 20.0;
+    vx = 0.0; vy = 0.0; vz = 68.0;
+    camYaw = 0.0;
+    runTimeRemaining = RUN_DURATION;
+    if (enemies.length === 0) spawnWave(wave);
+  }
+  const idx = apexTestCycleIdx % APEX_CUT_IDS.length;
+  apexTestCycleIdx = (idx + 1) % APEX_CUT_IDS.length;
+  const augId = APEX_CUT_IDS[idx];
+  const def = APEX_CUT_DEFS[augId];
+  if (btnApexTest) {
+    btnApexTest.textContent = '★CUT ' + (idx + 1) + '/6';
+  }
+
+  // 테스트 모드: 현재 위치 기준 3D 공간감 확인용 더미 3D 좌표 생성 (실제 적/게임 진행 무영향)
+  const sinY = Math.sin(camYaw), cosY = Math.cos(camYaw);
+  const rightX = cosY, rightZ = -sinY;
+  const safeY = Math.max(28.0, py);
+  if (py < 24.0) { py = 36.0; }
+
+  const payload = {
+    isDummy: true,
+    testLabel: 'TEST ' + (idx + 1) + '/6'
+  };
+
+  if (augId === 'heavy_suit') {
+    payload.targetPt = { x: px + sinY * 5.0, y: Math.max(8.0, py - 9.0), z: pz + cosY * 5.0 };
+  } else if (augId === 'overdrive') {
+    payload.targetPt = { x: px + sinY * 11.0, y: py + 0.5, z: pz + cosY * 11.0 };
+  } else if (augId === 'bungee_web') {
+    payload.anchorPt = { x: px + rightX * 32.0 + sinY * 14.0, y: py + 48.0, z: pz + rightZ * 32.0 + cosY * 14.0 };
+  } else if (augId === 'lasso_swing') {
+    payload.targetPt = { x: px + sinY * 14.0, y: py + 1.0, z: pz + cosY * 14.0 };
+    const lPts = [];
+    for (let k = 0; k < 6; k++) {
+      const a = (k / 6) * Math.PI * 2 + 0.3;
+      lPts.push({
+        x: px + sinY * 10.0 + Math.cos(a) * 14.0,
+        y: Math.max(8.0, py + Math.sin(a * 2.0) * 6.5),
+        z: pz + cosY * 10.0 + Math.sin(a) * 14.0
+      });
+    }
+    payload.lassoPts = lPts;
+  } else if (augId === 'chain_pinball') {
+    const cPts = [
+      { x: px - sinY * 26.0 - rightX * 14.0, y: Math.max(12.0, py - 6.0), z: pz - cosY * 26.0 - rightZ * 14.0 },
+      { x: px - sinY * 20.0 + rightX * 15.0, y: Math.max(14.0, py + 7.0), z: pz - cosY * 20.0 + rightZ * 15.0 },
+      { x: px - sinY * 11.0 - rightX * 16.0, y: Math.max(12.0, py - 4.0), z: pz - cosY * 11.0 - rightZ * 16.0 },
+      { x: px - sinY * 5.0 + rightX * 14.0,  y: Math.max(14.0, py + 8.0), z: pz - cosY * 5.0 + rightZ * 14.0 },
+      { x: px + sinY * 3.0 - rightX * 9.0,   y: Math.max(10.0, py - 2.0), z: pz + cosY * 3.0 - rightZ * 9.0 },
+      { x: px, y: py, z: pz }
+    ];
+    payload.chainPts = cPts;
+    payload.targetPt = { x: px + sinY * 8.0, y: py + 1.0, z: pz + cosY * 8.0 };
+  } else if (augId === 'elastic') {
+    payload.wallPt = { x: px - rightX * 16.0 - sinY * 5.0, y: Math.max(10.0, safeY - 2.0), z: pz - rightZ * 16.0 - cosY * 5.0 };
+    payload.targetPt = { x: px + rightX * 9.0 + sinY * 10.0, y: Math.max(10.0, safeY + 2.0), z: pz + rightZ * 9.0 + cosY * 10.0 };
+  }
+
+  tryTriggerApexCut(augId, payload, true);
+  if (def) {
+    addPopup('[' + (idx + 1) + '/6] ' + def.name, def.col, 3);
+  }
+}
+
+// Phase 1 (완전 0% 시간정지 + 3D 시점 선회) 업데이트 — true 반환 시 월드 물리/적/타이머 완전 정지
+function updateApexCutFreeze(dt) {
+  if (!apexActive) return false;
+  apexTimer += dt;
+
+  if (apexTimer < APEX_FREEZE_DUR) {
+    const p = Math.max(0.0, Math.min(1.0, apexTimer / APEX_FREEZE_DUR));
+    // Ease-Out 커브: 빠르게 진입 후 3D 입체감을 음미하도록 부드럽게 감속 선회
+    const u = 1.0 - Math.pow(1.0 - p, 2.2);
+    const curAng = apexStartAng + apexOrbitArc * u;
+    const curRad = apexOrbitRadius + (apexOrbitRadiusEnd - apexOrbitRadius) * u;
+    const curElev = apexStartElev + (apexEndElev - apexStartElev) * u;
+
+    apexCamX = apexAnchorX + Math.sin(curAng) * curRad;
+    apexCamY = Math.max(4.2, apexAnchorY + curElev);
+    apexCamZ = apexAnchorZ + Math.cos(curAng) * curRad;
+    apexCamBlend = 1.0;
+    apexLetterbox = Math.min(1.0, apexTimer / 0.08);
+
+    const dx = apexAnchorX - apexCamX;
+    const dy = apexAnchorY - apexCamY;
+    const dz = apexAnchorZ - apexCamZ;
+    camLagYaw = Math.atan2(dx, dz);
+    camPitch = Math.max(-1.05, Math.min(0.85, Math.atan2(dy, Math.hypot(dx, dz) || 1.0)));
+    camRoll += (apexTargetRoll - camRoll) * Math.min(1.0, 10.0 * dt);
+    fovD += (apexFreezeFov - fovD) * Math.min(1.0, 10.0 * dt);
+    return true;
+  }
+
+  // Phase 1 -> Phase 2 전환 순간 (1회 실행: 안전 복귀 + 지연 추격 기준점 저장)
+  if (!apexReleaseTriggered) {
+    apexReleaseTriggered = true;
+    apexHoldCamX = apexCamX;
+    apexHoldCamY = apexCamY;
+    apexHoldCamZ = apexCamZ;
+    const def = APEX_CUT_DEFS[apexId];
+    invulnTimer = Math.max(invulnTimer, 0.65);
+    clearProjectilesInRadius(px, py, pz, 28.0, def ? def.col : PAL.GOLD);
+    if (py < 12.0 && vy < 10.0) {
+      vy = Math.max(vy, 24.0);
+    }
+    if (apexId === 'bungee_web' || apexId === 'heavy_suit' || apexId === 'lasso_swing') {
+      doingFlip = true;
+      flipAngle = 0.0;
+    }
+    // 테스트 모드일 때만 해제 직후 속도 대비를 눈으로 확인하도록 가벼운 테스트 추진
+    if (apexIsTest) {
+      const sinY = Math.sin(camYaw), cosY = Math.cos(camYaw);
+      if (apexId === 'overdrive') {
+        vx = sinY * 140.0; vz = cosY * 140.0; vy = Math.max(vy, 10.0);
+      } else if (apexId === 'bungee_web') {
+        vx = sinY * 62.0; vz = cosY * 62.0; vy = 86.0;
+      } else if (apexId === 'heavy_suit') {
+        vx = sinY * 48.0; vz = cosY * 48.0; vy = 52.0;
+      } else if (apexId === 'elastic') {
+        vx = sinY * 98.0; vz = cosY * 98.0; vy = 32.0;
+      } else {
+        vx = sinY * 78.0; vz = cosY * 78.0; vy = Math.max(vy, 36.0);
+      }
+    }
+  }
+  return false;
+}
+
+// Phase 2 (0.52~1.00s): 월드 물리 100% 재개 + 드라이브바이 지연 추격 -> 3인칭 스냅백
+function applyApexReleaseCamera(dt) {
+  if (!apexActive || apexTimer < APEX_FREEZE_DUR) return;
+  const relDur = Math.max(0.05, APEX_TOTAL_DUR - APEX_FREEZE_DUR);
+  const p = Math.max(0.0, Math.min(1.0, (apexTimer - APEX_FREEZE_DUR) / relDur));
+
+  // 초반 45%: 카메라가 지연 추격(Lag-Chase)하며 광각(FOV)으로 속도 대비 극대화
+  const lagFollow = p < 0.45 ? 1.8 : 7.5;
+  const sinY = Math.sin(camYaw), cosY = Math.cos(camYaw);
+  const wantBackX = px - sinY * 14.0;
+  const wantBackY = Math.max(4.5, py + 3.5);
+  const wantBackZ = pz - cosY * 14.0;
+  apexHoldCamX += (wantBackX - apexHoldCamX) * Math.min(1.0, lagFollow * dt);
+  apexHoldCamY += (wantBackY - apexHoldCamY) * Math.min(1.0, lagFollow * dt);
+  apexHoldCamZ += (wantBackZ - apexHoldCamZ) * Math.min(1.0, lagFollow * dt);
+
+  apexCamX = apexHoldCamX;
+  apexCamY = apexHoldCamY;
+  apexCamZ = apexHoldCamZ;
+
+  const snapT = p < 0.45 ? 0.0 : ((p - 0.45) / 0.55);
+  const easeOut = 1.0 - (1.0 - snapT) * (1.0 - snapT);
+  apexCamBlend = 1.0 - easeOut;
+  apexLetterbox = Math.max(0.0, 1.0 - easeOut);
+
+  // 카메라 시선은 캐릭터가 날아가는 지점을 추적하다가 점진적으로 정상 camLagYaw로 복귀
+  const dx = px - apexCamX, dy = (py + 1.0) - apexCamY, dz = pz - apexCamZ;
+  const trackYaw = Math.atan2(dx, dz);
+  const trackPitch = Math.max(-0.98, Math.min(0.75, Math.atan2(dy, Math.hypot(dx, dz) || 1.0)));
+  let yawDiff = (trackYaw - camLagYaw + Math.PI) % (2 * Math.PI) - Math.PI;
+  if (yawDiff < -Math.PI) yawDiff += 2 * Math.PI;
+  camLagYaw += yawDiff * apexCamBlend * Math.min(1.0, 14.0 * dt);
+  camPitch = camPitch + (trackPitch - camPitch) * apexCamBlend;
+  camRoll = camRoll * (1.0 - apexCamBlend) + (apexTargetRoll * 0.25 * (1.0 - p)) * apexCamBlend;
+  fovD = fovD + (apexReleaseFov - fovD) * apexCamBlend * Math.min(1.0, 14.0 * dt);
+
+  if (apexTimer >= APEX_TOTAL_DUR) {
+    apexActive = false;
+    apexCamBlend = 0.0;
+    apexLetterbox = 0.0;
+    apexSceneExtras = null;
+    apexIsTest = false;
+  }
 }
 
 function getInputs() {
@@ -1576,6 +2029,7 @@ function onStrikePress() {
   if (gameOver) { resetGame(); return; }
   if (handleOpeningAnyInput()) return;
   if (isOpeningActive()) return;
+  if (isApexFreezePhase()) return;
   if (strikeCooldown > 0 || strikeMode !== 0) return;
 
   const aug = getAugStats();
@@ -1587,6 +2041,7 @@ function onStrikePress() {
 
   chainBouncesLeft = getChainBounceCount();
   chainVisited = [];
+  chainPathPts = [];
   isChainRush = false;
 
   if (caseType === 1) {
@@ -1809,6 +2264,9 @@ function onSwingDown() {
   swingHeld = true;
   swingReattachCooldown = 0;
   btnSwing.classList.add('pressed');
+  if (isApexFreezePhase()) {
+    return;
+  }
 
   if (py <= 4.0) {
     vy = 58.0;
@@ -1834,6 +2292,7 @@ function onSwingUp() {
   if (isSwinging) {
     const aug = getAugStats();
     const wasPerfect = inPerfectWindow || perfectGraceTimer > 0;
+    const prevAnchorPt = { x: ax, y: ay, z: az };
     isSwinging = false;
     inPerfectWindow = false;
     perfectGraceTimer = 0;
@@ -1879,6 +2338,13 @@ function onSwingUp() {
         spawnSparks(px, py, pz, PAL.GOLD, 10, 34);
         spawnSparks(px, py, pz, PAL.NEON_CYAN, 8, 30);
         addPopup('PERFECT RELEASE!!', PAL.NEON_CYAN, 3);
+
+        // [Step 4] 고탄성 번지줄 Lv.3 극한 슬링샷 1초 불릿타임 3D 오빗 컷씬
+        if (lvBung >= 3 && swingDepth >= 68.0 && vy >= 95.0) {
+          if (tryTriggerApexCut('bungee_web', { anchorPt: prevAnchorPt })) {
+            hitStopTimer = 0.0;
+          }
+        }
       } else {
         const upwardKick = (6.0 + depthRatio * 6.0) * aug.bungeeBounce;
         const targetVy = Math.min(64.0 * aug.bungeeBounce, vy + upwardKick);
@@ -1979,6 +2445,7 @@ function handleBuildingsCollisionAndProximity(bList) {
               clearStrikeState();
               if (getLv('fric_heat') > 0) frictionCharge = Math.min(1.5, frictionCharge + 0.55);
               if (lvElastic >= 3) elasticCritTimer = 2.5;
+              lastElasticWallPt = { x: px, y: py, z: pz, nx: nx, nz: nz };
               shakeMag = Math.max(shakeMag, 2.8);
               const eShock = getElasticShockSpec();
               triggerShockwave(px, py, pz, eShock ? eShock.radius : 44, eShock ? eShock.dmg : 20, PAL.EMERALD);
@@ -2470,10 +2937,19 @@ function updateCombat(dt, oldX, oldY, oldZ, bList, totalSpeed) {
 
         // [올가미 스윙] 포획된 적 전원 일괄 기폭!
         let lassoAwakenBounce = false;
+        let lassoTiedCount = 0;
+        let lassoPtsSnap = null;
         if (lassoSpec && lassoTargets.length > 0) {
           const tiedSnap = lassoTargets.slice();
           lassoTargets = [];
           const tiedCount = tiedSnap.length;
+          lassoTiedCount = tiedCount;
+          if (tiedCount >= 6 && getLv('lasso_swing') >= 3) {
+            lassoPtsSnap = [];
+            for (let k = 0; k < tiedSnap.length; k++) {
+              lassoPtsSnap.push({ x: tiedSnap[k].x, y: tiedSnap[k].y, z: tiedSnap[k].z });
+            }
+          }
           const awakened = tiedCount >= lassoSpec.awakenCount;
           lassoAwakenBounce = awakened;
           const boomR = (52.0 + tiedCount * 7.0) * (awakened ? 1.5 : 1.0);
@@ -2519,6 +2995,7 @@ function updateCombat(dt, oldX, oldY, oldZ, bList, totalSpeed) {
         // [기믹 3: 연쇄 핀볼] 적중 후 레벨별 반경(95/120/150m) 내 다음 적에게 자동 튕겨 연속 타격
         const chainSpec = getChainSpec();
         if (chainVisited.indexOf(e) === -1) chainVisited.push(e);
+        chainPathPts.push({ x: targetX, y: targetY, z: targetZ });
         if (chainBouncesLeft > 0) {
           const nextTarget = findNextChainTarget(targetX, targetY, targetZ, chainVisited, chainSpec ? chainSpec.radius : 95.0);
           if (nextTarget) {
@@ -2545,8 +3022,14 @@ function updateCombat(dt, oldX, oldY, oldZ, bList, totalSpeed) {
           }
         }
 
+        const wasChainRush = isChainRush;
+        const chainPathSnap = chainPathPts.slice();
+        const peakFallBeforeReset = Math.max(peakFallSpeed, Math.max(0, -vy));
+        const elasticCritBeforeReset = elasticCritTimer;
+
         // 연쇄 종료 -> 정상 반동/관통 마무리
         clearStrikeState();
+        chainPathPts = [];
 
         let impactLabel = '';
         if (curMode === 1) {
@@ -2611,6 +3094,28 @@ function updateCombat(dt, oldX, oldY, oldZ, bList, totalSpeed) {
         perfectBuffTimer = 0.0;
         skimTechTimer = 0.0;
         elasticCritTimer = 0.0;
+
+        // [Step 4] 플레이 방식 변혁 Lv.3(★각성) 순수 연출 1초 불릿타임 3D 오빗 체크 (추가 딜 0)
+        const apexTargetPt = { x: targetX, y: targetY, z: targetZ };
+        let apexTriggered = false;
+        if (!apexTriggered && lassoTiedCount >= 6 && getLv('lasso_swing') >= 3) {
+          apexTriggered = tryTriggerApexCut('lasso_swing', { targetPt: apexTargetPt, lassoPts: lassoPtsSnap });
+        }
+        if (!apexTriggered && wasChainRush && getLv('chain_pinball') >= 3 && chainPathSnap.length >= 6 && chainBouncesLeft === 0) {
+          apexTriggered = tryTriggerApexCut('chain_pinball', { targetPt: apexTargetPt, chainPts: chainPathSnap });
+        }
+        if (!apexTriggered && curMode === 1 && lvHeavy >= 3 && peakFallBeforeReset >= 135.0) {
+          apexTriggered = tryTriggerApexCut('heavy_suit', { targetPt: apexTargetPt });
+        }
+        if (!apexTriggered && curMode === 3 && !wasChainRush && getLv('overdrive') >= 3 && strikeEntrySpd >= 165.0) {
+          apexTriggered = tryTriggerApexCut('overdrive', { targetPt: apexTargetPt });
+        }
+        if (!apexTriggered && getLv('elastic') >= 3 && elasticCritBeforeReset >= 1.6 && strikeEntrySpd >= 100.0) {
+          apexTriggered = tryTriggerApexCut('elastic', { targetPt: apexTargetPt, wallPt: lastElasticWallPt });
+        }
+        if (apexTriggered) {
+          hitStopTimer = 0.0;
+        }
 
         if (!killed) {
           addPopup(impactLabel, impactCol, 1);
@@ -2679,6 +3184,14 @@ function getCameraPos() {
     cz: pz - cosY * camDist + rightZ * sideShift
   } : { cx: px, cy: py, cz: pz };
 
+  if (apexCamBlend > 0.001) {
+    const b = Math.max(0.0, Math.min(1.0, apexCamBlend));
+    return {
+      cx: baseCam.cx + (apexCamX - baseCam.cx) * b,
+      cy: baseCam.cy + (apexCamY - baseCam.cy) * b,
+      cz: baseCam.cz + (apexCamZ - baseCam.cz) * b
+    };
+  }
   if (openingCamBlend > 0.001) {
     const b = Math.max(0.0, Math.min(1.0, openingCamBlend));
     return {
@@ -3385,6 +3898,7 @@ function drawSpiderManSprite(cb, totalSpeed) {
   let poseKey = 'DIVE';
   let spinThisPose = false;
   const isHeroPoseCut = (openingPhase === 'DROP_INTRO' && openingPoseMode === 'POSE');
+  const apexDef = apexActive ? APEX_CUT_DEFS[apexId] : null;
   if (openingPhase === 'ROOF_WAIT') {
     poseKey = 'ROOF_IDLE';
   } else if (openingPhase === 'ROOF_WALK') {
@@ -3394,6 +3908,14 @@ function drawSpiderManSprite(cb, totalSpeed) {
     else if (openingPoseMode === 'FLIP') poseKey = 'FLIP';
     else if (openingPoseMode === 'POSE') poseKey = 'DROP_HERO';
     else poseKey = 'DIVE';
+  } else if (apexDef) {
+    if (apexTimer < APEX_FREEZE_DUR) {
+      poseKey = apexDef.pose1;
+      spinThisPose = false;
+    } else {
+      poseKey = apexDef.pose2;
+      spinThisPose = !!apexDef.spin2;
+    }
   } else if (strikeMode === 3) {
     const cm = CARTOON_MOTIONS[strikeMotionIdx];
     poseKey = cm.pose;
@@ -3420,7 +3942,7 @@ function drawSpiderManSprite(cb, totalSpeed) {
     if (!ap) continue;
     const aPose = spideySprites[ai.poseKey] || spideySprites.FLIP;
     const ghostCanvas = ai.tone === 0 ? aPose.cyanGhost : aPose.goldGhost;
-    const maxGhostH = isHeroPoseCut ? 64 : 46;
+    const maxGhostH = isHeroPoseCut ? 64 : (apexActive ? 56 : 46);
     const sc = Math.max(12, Math.min(maxGhostH, (4.2 / ap.z) * cb.d)) / ghostCanvas.height;
     const dw = Math.round(ghostCanvas.width * sc), dh = Math.round(ghostCanvas.height * sc);
     ctx.save();
@@ -3431,9 +3953,9 @@ function drawSpiderManSprite(cb, totalSpeed) {
     ctx.restore();
   }
 
-  const pose = spideySprites[poseKey];
+  const pose = spideySprites[poseKey] || spideySprites.DIVE;
   const spr = pose.canvas;
-  const maxSprH = isHeroPoseCut ? 72 : 54;
+  const maxSprH = isHeroPoseCut ? 72 : (apexActive ? 64 : 54);
   const screenH = Math.max(14, Math.min(maxSprH, (4.2 / centerPt.z) * cb.d));
   const scale = screenH / spr.height;
   const drawW = Math.round(spr.width * scale), drawH = Math.round(spr.height * scale);
@@ -3480,7 +4002,7 @@ function drawSpiderManSprite(cb, totalSpeed) {
       ctx.lineWidth = 2;
       ctx.beginPath(); ctx.arc(cx, cy, auraR, 0, Math.PI * 2); ctx.stroke();
     }
-  } else if (strikeGraceTimer > 0) {
+  } else if (strikeGraceTimer > 0 && !apexActive) {
     const shieldR = Math.round(screenH * 0.62);
     ctx.setLineDash([3, 3]);
     ctx.strokeStyle = PAL.NEON_CYAN;
@@ -3494,11 +4016,11 @@ function drawSpiderManSprite(cb, totalSpeed) {
     ctx.beginPath(); ctx.arc(cx, cy, flashR, 0, Math.PI * 2); ctx.stroke();
   }
 
-  if (invulnTimer > 0 && (Math.floor(simTime * 18) & 1) === 0) {
+  if (!apexActive && invulnTimer > 0 && (Math.floor(simTime * 18) & 1) === 0) {
     return { x: cx, y: cy, x1: null, y1: null, x2: null, y2: null };
   }
 
-  if (doingFlip || spinThisPose) {
+  if (!isApexFreezePhase() && (doingFlip || spinThisPose)) {
     ctx.save();
     ctx.translate(cx, cy);
     ctx.rotate(flipAngle);
@@ -3825,7 +4347,7 @@ function tick(now) {
       moveDraftCursor(joyX > 0 ? 1 : -1);
       draftJoyLock = true;
     }
-  } else if (pendingLevelUps > 0 && hitStopTimer <= 0 && !gameOver) {
+  } else if (pendingLevelUps > 0 && hitStopTimer <= 0 && !gameOver && !apexActive) {
     swingHeld = false;
     autoCatchAfterJump = false;
     if (btnSwing) btnSwing.classList.remove('pressed', 'ready', 'perfect');
@@ -3840,6 +4362,8 @@ function tick(now) {
 
   if (!isFrozen && updateOpeningCutscene(dt)) {
     // 컷신(ROOF_WAIT / ROOF_WALK / DROP_INTRO) 중에는 본 게임 물리·전투·타이머 스킵
+  } else if (!isFrozen && updateApexCutFreeze(dt)) {
+    // Step 4 Phase 1 (0.00~0.52s): 완전 0% 시간정지 + 3D 시점 선회 (물리·적·타이머 완전 정지)
   } else if (!isFrozen) {
     const aug = getAugStats();
     simTime += dt;
@@ -3847,7 +4371,15 @@ function tick(now) {
       openingTimer += dt;
     }
 
-    if (openingPhase === 'ACTIVE' && runTimeRemaining > 0) {
+    if (openingPhase === 'ACTIVE' && !apexActive) {
+      if (apexGlobalCd > 0.0) apexGlobalCd = Math.max(0.0, apexGlobalCd - dt);
+      for (let i = 0; i < APEX_CUT_IDS.length; i++) {
+        const aid = APEX_CUT_IDS[i];
+        if (apexAugCds[aid] > 0.0) apexAugCds[aid] = Math.max(0.0, apexAugCds[aid] - dt);
+      }
+    }
+
+    if (openingPhase === 'ACTIVE' && !apexActive && runTimeRemaining > 0) {
       runTimeRemaining = Math.max(0.0, runTimeRemaining - dt);
       if (runTimeRemaining <= 0 && !runTimerZeroTriggered) {
         onRunTimerZero();
@@ -3863,9 +4395,9 @@ function tick(now) {
     if (shakeMag > 0) shakeMag = Math.max(0, shakeMag - 12.0 * dt);
     if (stylePopTimer > 0) stylePopTimer = Math.max(0, stylePopTimer - dt);
     if (stylePulseTimer > 0) stylePulseTimer = Math.max(0, stylePulseTimer - dt);
-    if (perfectBuffTimer > 0) perfectBuffTimer = Math.max(0, perfectBuffTimer - dt);
-    if (elasticCritTimer > 0) elasticCritTimer = Math.max(0, elasticCritTimer - dt);
-    if (strikeRushTimer > 0) {
+    if (!apexActive && perfectBuffTimer > 0) perfectBuffTimer = Math.max(0, perfectBuffTimer - dt);
+    if (!apexActive && elasticCritTimer > 0) elasticCritTimer = Math.max(0, elasticCritTimer - dt);
+    if (!apexActive && strikeRushTimer > 0) {
       strikeRushTimer = Math.max(0, strikeRushTimer - dt);
       if (strikeRushTimer <= 0) strikeRushStack = 0;
     }
@@ -3892,7 +4424,7 @@ function tick(now) {
       peakFallSpeed = Math.max(peakFallSpeed, -vy);
     }
 
-    if (openingPhase === 'ACTIVE') {
+    if (openingPhase === 'ACTIVE' && !apexActive) {
       if (comboTimer > 0) {
         comboTimer = Math.max(0.0, comboTimer - dt);
       } else if (!isSwinging && strikeMode === 0) {
@@ -4492,6 +5024,9 @@ function tick(now) {
     const cartoonZoomFov = strikeCamBlend * 34.0;
     const targetFov = Math.max(66.0, 228.0 - totalSpeed * 0.80 - lowThrill - wallThrill - rushFov + cartoonZoomFov);
     fovD += (targetFov - fovD) * 8.5 * dt;
+
+    // Step 4 Phase 2 (0.52~1.00s): 지연 추격(Drive-by/Lag-Chase) -> 3인칭 스냅백 카메라 오버라이드
+    applyApexReleaseCamera(dt);
   }
 
   // Tactile Action Buttons UI Update
@@ -4800,9 +5335,117 @@ function tick(now) {
     if (sp) { ctx.fillStyle = s.col; ctx.fillRect(sp.x | 0, sp.y | 0, 2, 2); }
   }
 
-  const handPos = (thirdPerson || openingCamBlend > 0.01)
+  const handPos = (thirdPerson || openingCamBlend > 0.01 || apexCamBlend > 0.01)
     ? drawSpiderManSprite(cb, totalSpeed)
     : { x: LCD_W * 0.5, y: LCD_H - 1, x1: null, y1: null, x2: null, y2: null };
+
+  // [Step 4] 3D 불릿타임 공간감 보조 선분 (과한 이펙트 없이 3D 위치·궤적·거미줄만 선명히 노출)
+  if (apexActive && apexSceneExtras) {
+    const defA = APEX_CUT_DEFS[apexId];
+    const accCol = defA ? defA.col : PAL.GOLD;
+    const pPt = projectWorldPt(px, py, pz, cb);
+    const draw3DSeg = (a, b, col, width) => {
+      const pa = projectWorldPt(a.x, a.y, a.z, cb);
+      const pb = projectWorldPt(b.x, b.y, b.z, cb);
+      if (!pa || !pb) return;
+      ctx.strokeStyle = PAL.INDIGO_OUTLINE; ctx.lineWidth = width + 1.4;
+      ctx.beginPath(); ctx.moveTo(pa.x, pa.y); ctx.lineTo(pb.x, pb.y); ctx.stroke();
+      ctx.strokeStyle = col; ctx.lineWidth = width;
+      ctx.beginPath(); ctx.moveTo(pa.x, pa.y); ctx.lineTo(pb.x, pb.y); ctx.stroke();
+    };
+    const drawDummyNode = (pt, col, big) => {
+      const sp = projectWorldPt(pt.x, pt.y, pt.z, cb);
+      if (!sp || sp.z < 2.0) return;
+      const r = Math.max(3, Math.min(big ? 13 : 9, ((big ? 4.0 : 2.8) / sp.z) * cb.d));
+      ctx.strokeStyle = PAL.INDIGO_OUTLINE; ctx.lineWidth = 2.2;
+      ctx.beginPath(); ctx.arc(sp.x, sp.y, r, 0, Math.PI * 2); ctx.stroke();
+      ctx.strokeStyle = col; ctx.lineWidth = 1.2;
+      ctx.beginPath(); ctx.arc(sp.x, sp.y, r, 0, Math.PI * 2); ctx.stroke();
+      ctx.fillStyle = '#ffffff'; ctx.fillRect((sp.x - 1) | 0, (sp.y - 1) | 0, 2, 2);
+    };
+
+    if (apexId === 'heavy_suit') {
+      if (apexTimer < APEX_FREEZE_DUR) {
+        draw3DSeg({ x: px, y: apexSceneExtras.dropTopY || (py + 28.0), z: pz }, { x: px, y: py + 2.0, z: pz }, '#ffffff', 1.0);
+      }
+      if (apexSceneExtras.isDummy && apexSceneExtras.targetPt) {
+        drawDummyNode(apexSceneExtras.targetPt, PAL.ORANGE, true);
+      }
+    } else if (apexId === 'overdrive') {
+      if (apexSceneExtras.isDummy && apexSceneExtras.targetPt) {
+        drawDummyNode(apexSceneExtras.targetPt, PAL.NEON_PINK, true);
+      }
+    } else if (apexId === 'bungee_web') {
+      if (apexTimer < APEX_FREEZE_DUR && apexSceneExtras.anchorPt && handPos) {
+        const ap = projectWorldPt(apexSceneExtras.anchorPt.x, apexSceneExtras.anchorPt.y, apexSceneExtras.anchorPt.z, cb);
+        if (ap) {
+          ctx.strokeStyle = PAL.INDIGO_OUTLINE; ctx.lineWidth = 2.6;
+          ctx.beginPath(); ctx.moveTo(handPos.x, handPos.y); ctx.lineTo(ap.x, ap.y); ctx.stroke();
+          ctx.strokeStyle = PAL.GOLD; ctx.lineWidth = 1.2;
+          ctx.beginPath(); ctx.moveTo(handPos.x, handPos.y); ctx.lineTo(ap.x, ap.y); ctx.stroke();
+        }
+      }
+    } else if (apexId === 'lasso_swing' && apexSceneExtras.lassoPts) {
+      const lPts = apexSceneExtras.lassoPts;
+      const tPt = apexSceneExtras.targetPt || { x: px, y: py, z: pz };
+      const pullT = apexTimer < APEX_FREEZE_DUR ? 0.0 : Math.min(1.0, (apexTimer - APEX_FREEZE_DUR) / 0.22);
+      for (let i = 0; i < lPts.length; i++) {
+        const lp = lPts[i];
+        const curPt = {
+          x: lp.x + (tPt.x - lp.x) * pullT,
+          y: lp.y + (tPt.y - lp.y) * pullT,
+          z: lp.z + (tPt.z - lp.z) * pullT
+        };
+        const ep = projectWorldPt(curPt.x, curPt.y, curPt.z, cb);
+        if (ep && handPos) {
+          const hx = (i & 1) && handPos.x2 !== null ? handPos.x2 : (handPos.x1 !== null ? handPos.x1 : handPos.x);
+          const hy = (i & 1) && handPos.y2 !== null ? handPos.y2 : (handPos.y1 !== null ? handPos.y1 : handPos.y);
+          ctx.strokeStyle = PAL.INDIGO_OUTLINE; ctx.lineWidth = 2.4;
+          ctx.beginPath(); ctx.moveTo(hx, hy); ctx.lineTo(ep.x, ep.y); ctx.stroke();
+          ctx.strokeStyle = (i & 1) ? '#ffffff' : '#d8b4fe'; ctx.lineWidth = 1.2;
+          ctx.beginPath(); ctx.moveTo(hx, hy); ctx.lineTo(ep.x, ep.y); ctx.stroke();
+        }
+        if (apexSceneExtras.isDummy && pullT < 0.95) {
+          drawDummyNode(curPt, '#d8b4fe', false);
+        }
+      }
+      if (apexSceneExtras.isDummy && apexSceneExtras.targetPt) {
+        drawDummyNode(apexSceneExtras.targetPt, PAL.GOLD, true);
+      }
+    } else if (apexId === 'chain_pinball' && apexSceneExtras.chainPts) {
+      const cPts = apexSceneExtras.chainPts;
+      for (let i = 0; i < cPts.length - 1; i++) {
+        draw3DSeg(cPts[i], cPts[i + 1], (i === cPts.length - 2) ? '#ffffff' : PAL.NEON_PINK, 1.3);
+      }
+      for (let i = 0; i < cPts.length; i++) {
+        const vp = projectWorldPt(cPts[i].x, cPts[i].y, cPts[i].z, cb);
+        if (vp) {
+          ctx.fillStyle = PAL.INDIGO_OUTLINE; ctx.fillRect((vp.x - 3) | 0, (vp.y - 3) | 0, 6, 6);
+          ctx.fillStyle = i === cPts.length - 1 ? PAL.GOLD : '#ffffff'; ctx.fillRect((vp.x - 2) | 0, (vp.y - 2) | 0, 4, 4);
+        }
+      }
+    } else if (apexId === 'elastic') {
+      const wp = apexSceneExtras.wallPt;
+      const tp = apexSceneExtras.targetPt;
+      if (wp && pPt) {
+        draw3DSeg(wp, { x: px, y: py, z: pz }, PAL.EMERALD, 1.4);
+        const wProj = projectWorldPt(wp.x, wp.y, wp.z, cb);
+        if (wProj) {
+          ctx.strokeStyle = PAL.EMERALD; ctx.lineWidth = 1.5;
+          ctx.beginPath();
+          ctx.moveTo(wProj.x - 5, wProj.y - 5); ctx.lineTo(wProj.x + 5, wProj.y + 5);
+          ctx.moveTo(wProj.x + 5, wProj.y - 5); ctx.lineTo(wProj.x - 5, wProj.y + 5);
+          ctx.stroke();
+        }
+      }
+      if (tp && pPt && apexTimer < APEX_FREEZE_DUR) {
+        draw3DSeg({ x: px, y: py, z: pz }, tp, '#ffffff', 1.2);
+      }
+      if (apexSceneExtras.isDummy && tp) {
+        drawDummyNode(tp, accCol, true);
+      }
+    }
+  }
 
   if (strikeMode === 3 && strikeTarget && handPos) {
     const p = Math.max(0.05, Math.min(1.0, strikeWebProg));
@@ -4987,7 +5630,7 @@ function tick(now) {
       ctx.beginPath(); ctx.moveTo(lx, ly); ctx.lineTo(lx, ly + 18 + (isDropChase ? 18 : diveCharge * 18)); ctx.stroke();
     }
   }
-  if ((totalSpeed > 82 && !isOpeningCutscene()) || (strikeMode !== 0 && strikePhase === 'RUSH') || groundSkimIntensity > 0.4) {
+  if (!isApexFreezePhase() && ((totalSpeed > 82 && !isOpeningCutscene()) || (strikeMode !== 0 && strikePhase === 'RUSH') || groundSkimIntensity > 0.4)) {
     const cnt = Math.min(11, ((totalSpeed - 70) / 9) | 0) + (strikePhase === 'RUSH' ? 6 : 0);
     for (let i = 0; i < cnt; i++) {
       const ang = Math.random() * Math.PI * 2;
@@ -5001,12 +5644,30 @@ function tick(now) {
     }
   }
 
-  const lbBlend = Math.max(strikeCamBlend, openingLetterbox);
+  const lbBlend = Math.max(strikeCamBlend, openingLetterbox, apexLetterbox);
   if (lbBlend > 0.04) {
-    const barH = Math.round(lbBlend * (openingLetterbox > strikeCamBlend ? 14 : 11));
+    const isApexBar = apexLetterbox >= openingLetterbox && apexLetterbox >= strikeCamBlend && apexLetterbox > 0.04;
+    const barH = Math.round(lbBlend * (openingLetterbox > strikeCamBlend && openingLetterbox > apexLetterbox ? 14 : (isApexBar ? 13 : 11)));
     ctx.fillStyle = PAL.INDIGO_OUTLINE;
     ctx.fillRect(0, 0, LCD_W, barH);
     ctx.fillRect(0, LCD_H - barH, LCD_W, barH);
+
+    // [Step 4] 레터박스 내부 미니멀 각성 라벨 (중앙 3D 시야 방해 0%)
+    if (isApexBar && barH >= 10) {
+      const defBar = APEX_CUT_DEFS[apexId];
+      const trimCol = defBar ? defBar.col : PAL.GOLD;
+      ctx.fillStyle = trimCol;
+      ctx.fillRect(0, barH - 1, LCD_W, 1);
+      ctx.fillRect(0, LCD_H - barH, LCD_W, 1);
+      ctx.font = 'bold 7.5px Consolas, monospace';
+      ctx.textAlign = 'left';
+      ctx.fillStyle = PAL.GOLD;
+      ctx.fillText(apexIsTest ? ('★ ' + apexTestLabel) : '★ APEX CUT', 6, barH - 3);
+      ctx.textAlign = 'right';
+      ctx.fillStyle = '#ffffff';
+      ctx.fillText(defBar ? defBar.title : 'AWAKENED', LCD_W - 6, barH - 3);
+      ctx.textAlign = 'left';
+    }
   }
 
   if (damageFlash > 0) {
@@ -5015,7 +5676,7 @@ function tick(now) {
     ctx.strokeRect(3, 3, LCD_W - 6, LCD_H - 6);
   }
 
-  if (!augmentDraftOpen && !gameOver && openingPhase === 'ACTIVE') {
+  if (!augmentDraftOpen && !gameOver && openingPhase === 'ACTIVE' && apexLetterbox <= 0.35) {
     drawOffscreenEnemyMarkers(cb);
   }
 
@@ -5029,7 +5690,7 @@ function tick(now) {
     ctx.strokeRect(x + 0.5, y + 0.5, w - 1, h - 1);
   };
 
-  if (!isOpeningCutscene()) {
+  if (!isOpeningCutscene() && apexLetterbox <= 0.35) {
     const hpCol = hp > 55 ? PAL.EMERALD : (hp > 25 ? PAL.GOLD : PAL.CRIMSON);
     const hudBorder = strikeMode === 1 ? PAL.ORANGE : (strikeMode === 3 ? (isChainRush ? PAL.NEON_PINK : PAL.NEON_CYAN) : '#68b0f0');
     drawPC98Box(4, 4, 114, 38, hudBorder);
@@ -5451,6 +6112,7 @@ function setupControls() {
   btnCam.addEventListener('click', toggleCam);
   btnShadow.addEventListener('click', toggleShadows);
   btnScanline.addEventListener('click', toggleScanline);
+  if (btnApexTest) btnApexTest.addEventListener('click', triggerApexTestCycle);
   btnReset.addEventListener('click', resetGame);
 
   const joyZone = document.getElementById('joy-zone') || joyBase;
@@ -5580,6 +6242,9 @@ function setupControls() {
         runTimeRemaining = 3.0;
         addPopup('DEBUG: BOSS IN 3s!', PAL.GOLD, 2);
       }
+      else if (e.code === 'KeyX') {
+        triggerApexTestCycle();
+      }
     }
   });
   window.addEventListener('keyup', (e) => {
@@ -5603,6 +6268,7 @@ function initApp() {
     btnCam         = document.getElementById('btn-cam');
     btnShadow      = document.getElementById('btn-shadow');
     btnScanline    = document.getElementById('btn-scanline');
+    btnApexTest    = document.getElementById('btn-apex-test');
     btnReset       = document.getElementById('btn-reset');
     btnSwing       = document.getElementById('btn-swing');
     swingBtnLabel  = document.getElementById('swing-btn-label');
