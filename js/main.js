@@ -576,6 +576,7 @@ function tick(now) {
         spawnSparks(px, 1.5, pz, PAL.ORANGE, 14, 34);
         addPopup('METEOR IMPACT!', PAL.ORANGE, 2);
       } else {
+        const fallSpd = Math.abs(vy);
         clearStrikeState();
         airTimeStack = 0.0;
         releaseLassoTargets('GROUNDED!');
@@ -586,14 +587,34 @@ function tick(now) {
           perfectGraceTimer = 0;
           isRopeTaut = false;
           swingReattachCooldown = 0.18;
-          spawnSparks(px, 1.5, pz, PAL.ORANGE, 10, 26);
-          takeDamage(8, 'GROUND SLAM!');
-        } else {
-          if (vy < -32.0) {
-            vx *= 0.55; vz *= 0.55;
-            takeDamage(8, 'HARD LANDING!');
+          if (fallSpd >= 115.0) {
+            invulnTimer = 0.0;
+            spawnExplosion(px, 2.0, pz, PAL.CRIMSON, PAL.ORANGE, 28);
+            takeDamage(100, 'FATAL FALL!');
+            if (hp <= 0) gameOverReason = 'FATAL FALL!';
+          } else {
+            const gRatio = Math.max(0.0, Math.min(1.0, (fallSpd - 20.0) / 95.0));
+            const gDmg = Math.round(14 + gRatio * 74);
+            spawnSparks(px, 1.5, pz, PAL.ORANGE, 10 + Math.round(gRatio * 10), 26 + gRatio * 16);
+            takeDamage(gDmg, gDmg >= 55 ? 'SEVERE GROUND SLAM!' : 'GROUND SLAM!');
           }
-          vy = 0.0;
+        } else {
+          if (fallSpd >= 115.0) {
+            vx *= 0.35; vz *= 0.35; vy = 0.0;
+            invulnTimer = 0.0;
+            spawnExplosion(px, 2.0, pz, PAL.CRIMSON, PAL.ORANGE, 28);
+            takeDamage(100, 'FATAL FALL!');
+            if (hp <= 0) gameOverReason = 'FATAL FALL!';
+          } else {
+            if (vy < -32.0) {
+              vx *= 0.55; vz *= 0.55;
+              const fRatio = Math.max(0.0, Math.min(1.0, (fallSpd - 32.0) / 83.0));
+              const fDmg = Math.round(14 + fRatio * 78);
+              spawnSparks(px, 1.5, pz, fDmg >= 55 ? PAL.CRIMSON : PAL.ORANGE, 8 + Math.round(fRatio * 12), 24 + fRatio * 18);
+              takeDamage(fDmg, fDmg >= 55 ? 'CRITICAL FALL!' : 'HARD LANDING!');
+            }
+            vy = 0.0;
+          }
         }
       }
     }

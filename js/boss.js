@@ -1,6 +1,21 @@
 'use strict';
 // Spider 3D — 6-Minute Boss Battle (OMEGA SOVEREIGN)
 
+function clearBossHazards() {
+  bossMines = [];
+  bossBombZones = [];
+  bossSkyRings = [];
+  bossSweep = null;
+  bossPatternType = 'NONE';
+  bossPatternStage = 'IDLE';
+  bossPatternTimer = 0.0;
+  bossPatternDuration = 1.0;
+  bossHoverLockTimer = 0.0;
+  bossPulseState = 'IDLE';
+  bossPulseTimer = 0.0;
+  bossPlayerInDanger = false;
+}
+
 function resetBossState() {
   bossActive = false;
   bossPhase = 'NONE';
@@ -12,56 +27,37 @@ function resetBossState() {
   bossEvadeFlash = 0.0;
   bossLastCutSec = 0.0;
   bossEscortTimer = 0.0;
-  bossFireTimer = 0.0;
-  bossPulseState = 'IDLE';
-  bossPulseTimer = 0.0;
+  bossArenaX = 0.0;
+  bossArenaZ = 0.0;
+  bossCruiseTime = 0.0;
+  bossCruiseDir = 1;
+  bossPatternCd = 2.2;
+  bossLastPattern = '';
   bossPulseCd = 3.5;
-  bossLaserState = 'IDLE';
-  bossLaserTimer = 0.0;
-  bossLaserCd = 5.0;
-  bossMines = [];
+  clearBossHazards();
   runCleared = false;
 }
 
 function spawnBossMines(stage) {
   bossMines = [];
   if (!bossEntity) return;
-  const orbitCount = stage >= 2 ? 7 : 5;
+  // 비행 경로 랜덤 부유 기뢰 폐지 -> 보스 코어 주변 공전 실드 기뢰(4기 -> P2 6기)만 배치
+  const orbitCount = stage >= 2 ? 6 : 4;
   for (let i = 0; i < orbitCount; i++) {
     const ang = (i / orbitCount) * Math.PI * 2;
-    const orbitR = 40.0 + (i % 2) * 11.0;
-    const yOff = ((i % 3) - 1) * 12.0;
+    const orbitR = 42.0 + (i % 2) * 10.0;
+    const yOff = ((i % 3) - 1) * 11.0;
     bossMines.push({
       x: bossEntity.x + Math.cos(ang) * orbitR,
       y: Math.max(24.0, bossEntity.y + yOff),
       z: bossEntity.z + Math.sin(ang) * orbitR,
-      radius: 7.2,
+      radius: 7.4,
       orbitMode: true,
       orbitAngle: ang,
       orbitR,
       orbitYOff: yOff,
-      orbitSpd: (stage >= 2 ? 1.45 : 1.10) * ((i & 1) ? 1 : -1),
+      orbitSpd: (stage >= 2 ? 1.40 : 1.05) * ((i & 1) ? 1 : -1),
       phase: i * 1.1,
-      respawnTimer: 0.0
-    });
-  }
-  const corridorCount = stage >= 2 ? 3 : 2;
-  const world = getNearbyWorld();
-  for (let j = 0; j < corridorCount; j++) {
-    const spread = ((j / Math.max(1, corridorCount - 1)) - 0.5) * 0.72;
-    const yaw = camYaw + spread;
-    const dist = 78.0 + j * 36.0;
-    const my = 52.0 + j * 28.0;
-    const safe = pushOutOfBuildings(px + Math.sin(yaw) * dist, my, pz + Math.cos(yaw) * dist, 18.0, world.buildings);
-    bossMines.push({
-      x: safe.x, y: my, z: safe.z,
-      radius: 8.2,
-      orbitMode: false,
-      orbitAngle: 0,
-      orbitR: 0,
-      orbitYOff: 0,
-      orbitSpd: 0,
-      phase: j * 1.9,
       respawnTimer: 0.0
     });
   }
@@ -146,11 +142,9 @@ function startBossEvadeTurn() {
   bossPhase = 'EVADE';
   bossPhaseTimer = BOSS_EVADE_DURATION;
   bossGroggyHits = 0;
-  bossFireTimer = 2.0;
-  bossPulseState = 'IDLE';
+  clearBossHazards();
+  bossPatternCd = 1.9;
   bossPulseCd = 3.2;
-  bossLaserState = 'IDLE';
-  bossLaserCd = 4.6;
   bossEscortTimer = 14.0;
   spawnBossMines(bossStage);
   spawnBossEscorts(bossStage, false);
@@ -166,9 +160,7 @@ function startBossGroggyTurn() {
   bossPhaseTimer = BOSS_GROGGY_DURATION;
   bossGroggyHits = 0;
   projectiles = [];
-  bossMines = [];
-  bossPulseState = 'IDLE';
-  bossLaserState = 'IDLE';
+  clearBossHazards();
   spawnBossSynergyDrones();
   hitStopTimer = Math.max(hitStopTimer, 0.065);
   shakeMag = Math.max(shakeMag, 5.5);
@@ -176,6 +168,95 @@ function startBossGroggyTurn() {
   spawnExplosion(bossEntity.x, bossEntity.y, bossEntity.z, PAL.GOLD, PAL.NEON_CYAN, 34);
   addPopup('CORE EXPOSED!! 6.5s BREAK!', PAL.GOLD, 3);
   if (typeof playSfx === 'function') playSfx('boss_groggy');
+}
+
+function startBossPattern(type) {
+  if (!bossEntity) return;
+  const b = bossEntity;
+  bossPatternType = type;
+  bossLastPattern = type;
+
+  if (type === 'SWEEP') {
+    const baseYaw = Math.atan2(px - b.x, pz - b.z);
+    const dir = Math.random() < 0.5 ? 1 : -1;
+    const halfArc = 0.663; // ±38 deg
+    const warnDur = bossStage >= 2 ? 1.00 : 1.25;
+    bossSweep = {
+      baseYaw,
+      startAngle: baseYaw - dir * halfArc,
+      endAngle: baseYaw + dir * halfArc,
+      curAngle: baseYaw - dir * halfArc,
+      targetY: Math.max(24.0, Math.min(185.0, py)),
+      tiltY: 0.0,
+      length: 295.0,
+      dir,
+      pass: 1,
+      maxPasses: bossStage >= 2 ? 2 : 1
+    };
+    bossPatternStage = 'WARN';
+    bossPatternTimer = warnDur;
+    bossPatternDuration = warnDur;
+    bossHoverLockTimer = warnDur + 1.0;
+    addPopup('SOLAR SWEEP! DODGE UP/DOWN!', PAL.GOLD, 2);
+    if (typeof playSfx === 'function') playSfx('boss_alarm', 1.25);
+  } else if (type === 'BOMB') {
+    bossBombZones = [];
+    const count = bossStage >= 2 ? 5 : 3;
+    const baseWarn = bossStage >= 2 ? 1.10 : 1.35;
+    const spdH = Math.hypot(vx, vz);
+    const dirX = spdH > 6.0 ? (vx / spdH) : Math.sin(camYaw);
+    const dirZ = spdH > 6.0 ? (vz / spdH) : Math.cos(camYaw);
+    const perpX = dirZ, perpZ = -dirX;
+    for (let k = 0; k < count; k++) {
+      const lead = 18.0 + k * 40.0;
+      const side = (k === 0) ? 0.0 : (((k & 1) ? 1 : -1) * (24.0 + (k % 2) * 14.0));
+      const altOff = (k === 0) ? 0.0 : (((k % 3) - 1) * 18.0);
+      const zx = px + dirX * lead + perpX * side;
+      const zz = pz + dirZ * lead + perpZ * side;
+      const zy = Math.max(24.0, Math.min(195.0, py + vy * 0.25 + altOff));
+      const tMax = baseWarn + k * 0.28;
+      bossBombZones.push({
+        x: zx, y: zy, z: zz,
+        r: 28.0,
+        timer: tMax,
+        maxTimer: tMax,
+        detonated: false
+      });
+    }
+    bossPatternStage = 'ACTIVE';
+    bossPatternTimer = baseWarn + count * 0.30;
+    bossPatternDuration = bossPatternTimer;
+    bossHoverLockTimer = 1.45;
+    addPopup('ORBITAL LOCK-ON! CLEAR ZONES!', PAL.ORANGE, 2);
+    if (typeof playSfx === 'function') playSfx('boss_alarm', 1.35);
+  } else if (type === 'RING') {
+    bossSkyRings = [];
+    const y1 = Math.max(24.0, Math.min(180.0, py));
+    const warn1 = bossStage >= 2 ? 1.00 : 1.15;
+    bossSkyRings.push({
+      x: b.x, y: y1, z: b.z,
+      r: 22.0, maxR: 280.0,
+      bandH: 14.0,
+      warnTimer: warn1, maxWarn: warn1,
+      active: false, hitDone: false
+    });
+    if (bossStage >= 2) {
+      const y2 = (y1 > 96.0) ? Math.max(26.0, y1 - 46.0) : Math.min(182.0, y1 + 46.0);
+      bossSkyRings.push({
+        x: b.x, y: y2, z: b.z,
+        r: 22.0, maxR: 280.0,
+        bandH: 14.0,
+        warnTimer: 1.55, maxWarn: 1.55,
+        active: false, hitDone: false
+      });
+    }
+    bossPatternStage = 'ACTIVE';
+    bossPatternTimer = 3.2;
+    bossPatternDuration = 3.2;
+    bossHoverLockTimer = 2.4;
+    addPopup('SKY RING! CLIMB OR DIVE!', PAL.GOLD, 2);
+    if (typeof playSfx === 'function') playSfx('boss_alarm', 1.12);
+  }
 }
 
 // Step 3 보스전 진입 훅 (06:00 카운트다운 종료 시 1회 발동)
@@ -195,15 +276,19 @@ function onRunTimerZero() {
   projectiles = [];
   pendingExplosions = [];
   lassoTargets = [];
-  bossMines = [];
+  clearBossHazards();
   clearStrikeState();
   hp = Math.min(MAX_HP, hp + 25);
 
   const sinY = Math.sin(camYaw), cosY = Math.cos(camYaw);
   const world = getNearbyWorld();
-  const bx = px + sinY * 135.0;
-  const bz = pz + cosY * 135.0;
+  const bx = px + sinY * 155.0;
+  const bz = pz + cosY * 155.0;
   const safe = pushOutOfBuildings(bx, 105.0, bz, 28.0, world.buildings);
+  bossArenaX = safe.x;
+  bossArenaZ = safe.z;
+  bossCruiseTime = 0.0;
+  bossCruiseDir = Math.random() < 0.5 ? 1 : -1;
   bossEntity = {
     tier: 'BOSS',
     type: 'BOSS_SOVEREIGN',
@@ -227,6 +312,7 @@ function onRunTimerZero() {
 function updateBossSystem(dt, bList, oldX, oldY, oldZ, isStrikeProtected) {
   if (!bossActive) return;
   if (bossEvadeFlash > 0) bossEvadeFlash = Math.max(0, bossEvadeFlash - dt);
+  bossPlayerInDanger = false;
 
   // 격파 후 1.1초 연쇄 폭발 컷신 -> RUN CLEAR!
   if (bossPhase === 'DEFEATED') {
@@ -255,16 +341,12 @@ function updateBossSystem(dt, bList, oldX, oldY, oldZ, isStrikeProtected) {
   const b = bossEntity;
   if (b.hitFlash > 0) b.hitFlash = Math.max(0, b.hitFlash - dt);
 
-  // INTRO: 2.2초간 상공에서 중간 고도(105m)로 강하 (플레이어 스윙 유지)
+  // INTRO: 2.2초간 아레나 중심 상공에서 중간 고도(105m)로 수직 강하
   if (bossPhase === 'INTRO') {
     bossPhaseTimer -= dt;
-    const sinY = Math.sin(camYaw), cosY = Math.cos(camYaw);
-    const desiredX = px + sinY * 130.0;
-    const desiredZ = pz + cosY * 130.0;
-    const safe = pushOutOfBuildings(desiredX, 105.0, desiredZ, 28.0, bList);
-    const lerpT = Math.min(1.0, 2.8 * dt);
-    b.x += (safe.x - b.x) * lerpT;
-    b.z += (safe.z - b.z) * lerpT;
+    const safe = pushOutOfBuildings(bossArenaX, 105.0, bossArenaZ, 28.0, bList);
+    b.x += (safe.x - b.x) * Math.min(1.0, 3.0 * dt);
+    b.z += (safe.z - b.z) * Math.min(1.0, 3.0 * dt);
     b.y += (105.0 - b.y) * Math.min(1.0, 3.2 * dt);
     if (bossPhaseTimer <= 0) {
       startBossEvadeTurn();
@@ -274,10 +356,9 @@ function updateBossSystem(dt, bList, oldX, oldY, oldZ, isStrikeProtected) {
 
   bossBattleTime += dt;
 
-  // 보스 위치 제어: 모든 빌드 유불리 최소화를 위해 중간 고도(78~125m, 그로기 95m) + 전방 복도 유지
   const sinY = Math.sin(camYaw), cosY = Math.cos(camYaw);
-  const rightX = cosY, rightZ = -sinY;
   const dxP = px - b.x, dyP = py - b.y, dzP = pz - b.z;
+  const horizDist = Math.hypot(dxP, dzP) || 1.0;
   const distToP = Math.hypot(dxP, dyP, dzP) || 1.0;
 
   if (bossPhase === 'GROGGY') {
@@ -292,22 +373,46 @@ function updateBossSystem(dt, bList, oldX, oldY, oldZ, isStrikeProtected) {
     return;
   }
 
-  // === EVADE TURN (40초 압박 + 접근 방해 기믹) ===
+  // === EVADE TURN (40초: 독립 아레나 순항 + 텔레그래프 4종 패턴) ===
   if (!apexActive) bossPhaseTimer -= dt;
+  if (bossHoverLockTimer > 0) bossHoverLockTimer = Math.max(0, bossHoverLockTimer - dt);
 
-  const sideSwing = Math.sin(simTime * 0.72) * 34.0;
-  const desiredDist = bossStage >= 2 ? 128.0 : 120.0;
-  const desiredX = px + sinY * desiredDist + rightX * sideSwing;
-  const desiredZ = pz + cosY * desiredDist + rightZ * sideSwing;
-  const desiredY = Math.max(78.0, Math.min(125.0, 102.0 + Math.sin(simTime * 0.95) * 20.0));
-  const moveSpd = distToP > 210.0 ? 2.6 : 1.15;
-  b.x += (desiredX - b.x) * Math.min(1.0, moveSpd * dt);
-  b.z += (desiredZ - b.z) * Math.min(1.0, moveSpd * dt);
-  b.y += (desiredY - b.y) * Math.min(1.0, 2.2 * dt);
-  const safeB = pushOutOfBuildings(b.x, b.y, b.z, 26.0, bList);
-  b.x = safeB.x; b.z = safeB.z;
+  // 0) 독립 아레나 순항 AI (Track 4 #8): 고무줄 추적 폐지 -> 400m+ 완전 이탈 시에만 재배치
+  if (horizDist > 400.0) {
+    bossArenaX = px + sinY * 165.0;
+    bossArenaZ = pz + cosY * 165.0;
+    bossCruiseTime = 0.0;
+    bossHoverLockTimer = 0.0;
+    addPopup('BOSS RELOCATING!', PAL.GOLD, 2);
+  }
 
-  // 1) 보스 공전 기뢰 & 비행 경로 부유 기뢰 업데이트 + 충돌 판정
+  const isHoverLocked = (bossPatternStage !== 'IDLE' || bossHoverLockTimer > 0.0 || bossPulseState === 'WARN');
+  if (isHoverLocked) {
+    // 패턴 예고·발동·후딜 중 위치 고정(호버링) -> 측면/상단 대아크 스윙 공략 빈틈 제공
+    b.vx = 0; b.vz = 0;
+    const hoverY = Math.max(78.0, Math.min(125.0, b.y + Math.sin(simTime * 3.2) * 3.0 * dt));
+    b.y = hoverY;
+  } else {
+    // 스폰 아레나 중심 반경 180~240m 8자(리사주) 저속 순항 (25~38 m/s)
+    const omega = (bossStage >= 2 ? 0.175 : 0.140) * bossCruiseDir;
+    bossCruiseTime += dt * omega;
+    const targetX = bossArenaX + Math.sin(bossCruiseTime) * 210.0;
+    const targetZ = bossArenaZ + Math.sin(bossCruiseTime * 2.0) * 115.0;
+    const targetY = 102.0 + Math.sin(bossCruiseTime * 2.2) * 20.0;
+
+    const toX = targetX - b.x;
+    const toZ = targetZ - b.z;
+    const toDist = Math.hypot(toX, toZ) || 1.0;
+    const maxCruiseSpd = (horizDist > 330.0) ? 84.0 : (bossStage >= 2 ? 36.0 : 28.0);
+    const step = Math.min(toDist, maxCruiseSpd * dt);
+    b.x += (toX / toDist) * step;
+    b.z += (toZ / toDist) * step;
+    b.y += (targetY - b.y) * Math.min(1.0, 1.8 * dt);
+    const safeB = pushOutOfBuildings(b.x, b.y, b.z, 26.0, bList);
+    b.x = safeB.x; b.z = safeB.z;
+  }
+
+  // 1) 보스 공전 실드 기뢰 업데이트 + 충돌 판정 (22 HP, 탄성 반발 시 반사 역전)
   const lvElastic = getLv('elastic');
   for (let i = 0; i < bossMines.length; i++) {
     const m = bossMines[i];
@@ -315,25 +420,14 @@ function updateBossSystem(dt, bList, oldX, oldY, oldZ, isStrikeProtected) {
       m.respawnTimer = Math.max(0, m.respawnTimer - dt);
       continue;
     }
-    if (m.orbitMode) {
-      m.orbitAngle += m.orbitSpd * dt;
-      m.x = b.x + Math.cos(m.orbitAngle) * m.orbitR;
-      m.z = b.z + Math.sin(m.orbitAngle) * m.orbitR;
-      m.y = Math.max(22.0, b.y + m.orbitYOff + Math.sin(simTime * 2.2 + m.phase) * 6.0);
-    } else {
-      m.y += Math.sin(simTime * 1.8 + m.phase) * 5.0 * dt;
-      const md = Math.hypot(m.x - px, m.y - py, m.z - pz);
-      if (md > 265.0) {
-        const ny = camYaw + (Math.random() - 0.5) * 0.7;
-        const safeM = pushOutOfBuildings(px + Math.sin(ny) * 115.0, 48.0 + Math.random() * 75.0, pz + Math.cos(ny) * 115.0, 18.0, bList);
-        m.x = safeM.x; m.y = 48.0 + Math.random() * 75.0; m.z = safeM.z;
-      }
-    }
+    m.orbitAngle += m.orbitSpd * dt;
+    m.x = b.x + Math.cos(m.orbitAngle) * m.orbitR;
+    m.z = b.z + Math.sin(m.orbitAngle) * m.orbitR;
+    m.y = Math.max(22.0, b.y + m.orbitYOff + Math.sin(simTime * 2.2 + m.phase) * 5.5);
 
     const dMine = pointToSegmentDist3D(m.x, m.y, m.z, oldX, oldY, oldZ, px, py, pz);
     if (dMine < m.radius + 3.4) {
       if (lvElastic > 0 && elasticChargesLeft > 0) {
-        // 탄성 반발 보유 시 기뢰 충돌도 반사 역전!
         elasticChargesLeft--;
         const bounceMult = getElasticBounceMult();
         const eShock = getElasticShockSpec();
@@ -355,100 +449,168 @@ function updateBossSystem(dt, bList, oldX, oldY, oldZ, isStrikeProtected) {
         vy = Math.max(18.0, vy * 0.35);
         m.respawnTimer = 3.5;
         spawnExplosion(m.x, m.y, m.z, PAL.CRIMSON, PAL.GOLD, 16);
-        takeDamage(12, 'SKY MINE!');
+        takeDamage(22, 'SKY MINE!');
       }
     }
   }
 
-  // 2) 근접 견제 반발 펄스 (보스 95m 이내 접근 시 예고 -> 58m 반발 폭발)
+  // 2) 패턴 D: REPULSOR DOME (근접 95m 이내 접근 시 0.95s 3D 구형 예고 -> 62m 폭발 26 HP)
   if (bossPulseState === 'IDLE') {
     bossPulseCd -= dt;
     if (bossPulseCd <= 0 && distToP < 95.0) {
       bossPulseState = 'WARN';
-      bossPulseTimer = 0.85;
-      addPopup('REPULSOR WARNING!', PAL.CRIMSON, 1);
+      bossPulseTimer = 0.95;
+      addPopup('REPULSOR DOME! GET OUT!', PAL.CRIMSON, 2);
     }
   } else if (bossPulseState === 'WARN') {
     bossPulseTimer -= dt;
+    if (distToP < 62.0) bossPlayerInDanger = true;
     if (bossPulseTimer <= 0) {
       bossPulseState = 'IDLE';
-      bossPulseCd = bossStage >= 2 ? 3.8 : 4.8;
-      shockwaves.push({ x: b.x, y: b.y, z: b.z, r: 8, maxR: 62, life: 0.36, maxLife: 0.36, col: PAL.CRIMSON });
-      shakeMag = Math.max(shakeMag, 4.2);
-      if (distToP < 58.0 && invulnTimer <= 0) {
+      bossPulseCd = bossStage >= 2 ? 4.2 : 5.0;
+      shockwaves.push({ x: b.x, y: b.y, z: b.z, r: 8, maxR: 66, life: 0.36, maxLife: 0.36, col: PAL.CRIMSON });
+      shakeMag = Math.max(shakeMag, 4.5);
+      if (typeof playSfx === 'function') playSfx('shockwave', 0.92);
+      if (distToP < 62.0 && invulnTimer <= 0) {
         const nl = Math.hypot(dxP, dzP) || 1.0;
-        vx = (dxP / nl) * 48.0;
-        vz = (dzP / nl) * 48.0;
+        vx = (dxP / nl) * 52.0;
+        vz = (dzP / nl) * 52.0;
         vy = Math.max(22.0, vy * 0.4 + 16.0);
-        takeDamage(14, 'REPULSOR BLAST!');
+        takeDamage(26, 'REPULSOR DOME!');
       }
     }
   }
 
-  // 3) 조준 레이저 (SOLAR BEAM: 예고 조준선 -> 고출력 빔 발사)
-  if (bossLaserState === 'IDLE') {
-    bossLaserCd -= dt;
-    if (bossLaserCd <= 0 && distToP < 260.0) {
-      bossLaserState = 'AIM';
-      bossLaserTimer = bossStage >= 2 ? 0.95 : 1.15;
-      bossLaserTx = px + vx * 0.32;
-      bossLaserTy = Math.max(12.0, py + vy * 0.22);
-      bossLaserTz = pz + vz * 0.32;
+  // 3) 메인 시그니처 텔레그래프 패턴 상태 머신 (A: SOLAR SWEEP / B: ORBITAL LOCK-ON / C: SKY RING)
+  if (bossPatternStage === 'IDLE') {
+    bossPatternCd -= dt;
+    if (bossPatternCd <= 0 && horizDist < 340.0) {
+      const pool = ['SWEEP', 'BOMB', 'RING'].filter((p) => p !== bossLastPattern);
+      const nextType = pool[Math.floor(Math.random() * pool.length)];
+      startBossPattern(nextType);
     }
-  } else if (bossLaserState === 'AIM') {
-    bossLaserTimer -= dt;
-    if (bossLaserTimer > 0.42) {
-      const trackT = Math.min(1.0, 2.2 * dt);
-      bossLaserTx += ((px + vx * 0.25) - bossLaserTx) * trackT;
-      bossLaserTy += (Math.max(12.0, py + vy * 0.18) - bossLaserTy) * trackT;
-      bossLaserTz += ((pz + vz * 0.25) - bossLaserTz) * trackT;
+  } else if (bossPatternStage === 'RECOVER') {
+    bossPatternTimer -= dt;
+    if (bossPatternTimer <= 0) {
+      bossPatternStage = 'IDLE';
+      bossPatternType = 'NONE';
+      bossPatternCd = bossStage >= 2 ? 2.1 : 2.7;
     }
-    if (bossLaserTimer <= 0) {
-      bossLaserState = 'FIRE';
-      bossLaserTimer = 0.50;
-      shakeMag = Math.max(shakeMag, 3.6);
+  } else if (bossPatternType === 'SWEEP' && bossSweep) {
+    // 패턴 A: SOLAR SWEEP (예고 부채꼴 평면 휩쓸기 빔, 35 HP)
+    const sw = bossSweep;
+    bossPatternTimer -= dt;
+    if (bossPatternStage === 'WARN') {
+      // 예고 부채꼴 고도대·각도 안에 있으면 위험 경고
+      const pYaw = Math.atan2(px - b.x, pz - b.z);
+      let dYaw = (pYaw - sw.baseYaw + Math.PI) % (2 * Math.PI) - Math.PI;
+      if (dYaw < -Math.PI) dYaw += 2 * Math.PI;
+      if (Math.abs(dYaw) < 0.72 && Math.abs(py - sw.targetY) < 28.0 && horizDist < sw.length) {
+        bossPlayerInDanger = true;
+      }
+      if (bossPatternTimer <= 0) {
+        bossPatternStage = 'ACTIVE';
+        bossPatternDuration = (sw.pass === 2) ? 0.75 : 0.85;
+        bossPatternTimer = bossPatternDuration;
+        shakeMag = Math.max(shakeMag, 3.8);
+        if (typeof playSfx === 'function') playSfx('shockwave', 1.32);
+      }
+    } else if (bossPatternStage === 'ACTIVE') {
+      const prog = 1.0 - Math.max(0.0, bossPatternTimer / Math.max(0.01, bossPatternDuration));
+      sw.curAngle = sw.startAngle + (sw.endAngle - sw.startAngle) * prog;
+      const bx2 = b.x + Math.sin(sw.curAngle) * sw.length;
+      const by2 = sw.targetY + (prog - 0.5) * 2.0 * sw.tiltY;
+      const bz2 = b.z + Math.cos(sw.curAngle) * sw.length;
+      const dBeam = pointToSegmentDist3D(px, py, pz, b.x, b.y, b.z, bx2, by2, bz2);
+      if (dBeam < 12.0 && invulnTimer <= 0) {
+        takeDamage(35, 'SOLAR SWEEP!');
+      }
+      if (bossPatternTimer <= 0) {
+        if (sw.pass < sw.maxPasses) {
+          // P2 2차 대각 교차 스윕
+          sw.pass++;
+          sw.dir = -sw.dir;
+          sw.baseYaw = Math.atan2(px - b.x, pz - b.z);
+          sw.startAngle = sw.baseYaw - sw.dir * 0.663;
+          sw.endAngle = sw.baseYaw + sw.dir * 0.663;
+          sw.curAngle = sw.startAngle;
+          sw.targetY = Math.max(24.0, Math.min(185.0, py));
+          sw.tiltY = sw.dir * 52.0;
+          bossPatternStage = 'WARN';
+          bossPatternTimer = 0.72;
+          bossPatternDuration = 0.72;
+          bossHoverLockTimer = 1.6;
+        } else {
+          bossSweep = null;
+          bossPatternStage = 'RECOVER';
+          bossPatternTimer = 0.90;
+          bossHoverLockTimer = 0.90;
+        }
+      }
     }
-  } else if (bossLaserState === 'FIRE') {
-    bossLaserTimer -= dt;
-    const bx1 = b.x, by1 = b.y, bz1 = b.z;
-    const bx2 = b.x + (bossLaserTx - b.x) * 2.2;
-    const by2 = b.y + (bossLaserTy - b.y) * 2.2;
-    const bz2 = b.z + (bossLaserTz - b.z) * 2.2;
-    const dBeam = pointToSegmentDist3D(px, py, pz, bx1, by1, bz1, bx2, by2, bz2);
-    if (dBeam < 10.5 && invulnTimer <= 0) {
-      takeDamage(18, 'SOLAR BEAM!');
+  } else if (bossPatternType === 'BOMB') {
+    // 패턴 B: ORBITAL LOCK-ON (3D 공중 폭격 구역 연쇄 기폭, 28 HP)
+    let anyPending = false;
+    for (let i = 0; i < bossBombZones.length; i++) {
+      const z = bossBombZones[i];
+      if (z.detonated) continue;
+      anyPending = true;
+      z.timer -= dt;
+      const zd = Math.hypot(px - z.x, py - z.y, pz - z.z);
+      if (zd < z.r + 3.0) bossPlayerInDanger = true;
+      if (z.timer <= 0) {
+        z.detonated = true;
+        shockwaves.push({ x: z.x, y: z.y, z: z.z, r: 6, maxR: z.r * 1.15, life: 0.34, maxLife: 0.34, col: PAL.ORANGE });
+        spawnExplosion(z.x, z.y, z.z, PAL.CRIMSON, PAL.GOLD, 18);
+        shakeMag = Math.max(shakeMag, 3.4);
+        if (typeof playSfx === 'function') playSfx('shockwave', 1.15);
+        if (zd < z.r + 3.0 && invulnTimer <= 0) {
+          takeDamage(28, 'ORBITAL BLAST!');
+        }
+      }
     }
-    if (bossLaserTimer <= 0) {
-      bossLaserState = 'IDLE';
-      bossLaserCd = bossStage >= 2 ? 4.4 : 5.6;
+    if (!anyPending) {
+      bossBombZones = [];
+      bossPatternStage = 'RECOVER';
+      bossPatternTimer = 0.90;
+      bossHoverLockTimer = 0.90;
+    }
+  } else if (bossPatternType === 'RING') {
+    // 패턴 C: SKY RING (고도층 확장 에너지 링 파동, 24 HP)
+    let anyAlive = false;
+    for (let i = 0; i < bossSkyRings.length; i++) {
+      const rg = bossSkyRings[i];
+      if (rg.r >= rg.maxR) continue;
+      anyAlive = true;
+      rg.x = b.x; rg.z = b.z;
+      const inBand = (Math.abs(py - rg.y) < rg.bandH);
+      if (!rg.active) {
+        rg.warnTimer -= dt;
+        if (inBand) bossPlayerInDanger = true;
+        if (rg.warnTimer <= 0) {
+          rg.active = true;
+          shakeMag = Math.max(shakeMag, 3.0);
+          if (typeof playSfx === 'function') playSfx('shockwave', 1.05);
+        }
+      } else {
+        rg.r += 172.0 * dt;
+        const hd = Math.hypot(px - rg.x, pz - rg.z);
+        if (inBand && Math.abs(hd - rg.r) < 28.0) bossPlayerInDanger = true;
+        if (!rg.hitDone && inBand && Math.abs(hd - rg.r) < 12.0 && invulnTimer <= 0) {
+          rg.hitDone = true;
+          takeDamage(24, 'SKY RING!');
+        }
+      }
+    }
+    if (!anyAlive) {
+      bossSkyRings = [];
+      bossPatternStage = 'RECOVER';
+      bossPatternTimer = 0.90;
+      bossHoverLockTimer = 0.90;
     }
   }
 
-  // 4) 보스 부채꼴 플라즈마 탄막 (5발 -> 2페이즈 7발)
-  bossFireTimer -= dt;
-  if (bossFireTimer <= 0 && projectiles.length < 28 && distToP < 280.0) {
-    bossFireTimer = bossStage >= 2 ? 2.4 : 3.0;
-    const fanCount = bossStage >= 2 ? 7 : 5;
-    const pSpd = bossStage >= 2 ? 82.0 : 72.0;
-    const aimX = (px + vx * 0.22) - b.x;
-    const aimY = (py + vy * 0.16) - b.y;
-    const aimZ = (pz + vz * 0.22) - b.z;
-    const aimD = Math.hypot(aimX, aimY, aimZ) || 1.0;
-    const baseDx = aimX / aimD, baseDy = aimY / aimD, baseDz = aimZ / aimD;
-    for (let k = 0; k < fanCount; k++) {
-      const ang = ((k / (fanCount - 1)) - 0.5) * (bossStage >= 2 ? 0.62 : 0.48);
-      const cA = Math.cos(ang), sA = Math.sin(ang);
-      const fx = baseDx * cA - baseDz * sA;
-      const fz = baseDx * sA + baseDz * cA;
-      projectiles.push({
-        x: b.x, y: b.y, z: b.z,
-        vx: fx * pSpd, vy: baseDy * pSpd, vz: fz * pSpd,
-        life: 4.5, col: bossStage >= 2 ? PAL.GOLD : PAL.CRIMSON
-      });
-    }
-  }
-
-  // 5) 40초 회피턴 중 호위 몹 전멸 시 소규모 증원
+  // 4) 40초 회피턴 중 호위 몹 전멸 시 소규모 증원
   let escortCount = 0;
   for (let i = 0; i < enemies.length; i++) {
     if (!enemies[i].isBoss) escortCount++;
@@ -461,7 +623,7 @@ function updateBossSystem(dt, bList, oldX, oldY, oldZ, isStrikeProtected) {
     }
   }
 
-  // 6) 회피턴 시간 종료 -> 그로기 턴 진입
+  // 5) 회피턴 시간 종료 -> 그로기 턴 진입
   if (bossPhaseTimer <= 0) {
     startBossGroggyTurn();
   }

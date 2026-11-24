@@ -53,11 +53,11 @@
 - **`js/audio.js`:** `SFX_TABLE`, `BGM_SWING_STEPS`, `BGM_BOSS_STEPS`, `unlockAudio`, `cycleAudioMode`, `playSfx`, `resetAudioForNewRun`, `updateAudio`
 - **`js/state.js`:** 전역 상태(`GAME_MAX_ALTITUDE`, `BASE_GRAVITY`, `px/py/pz`, `BOSS_*`, `START_ROOF`, `APEX_*`), `spawnSparks`/`spawnExplosion`/`spawnDamageNumber`/`spawnLightningBolt`, `syncStageFromStyleRank`, `addStylePoints`, `dropStyleRanks`, `clearStrikeState`, `releaseLassoTargets`, `takeDamage`
 - **`js/world.js`:** `getBlockData`, `getNearbyWorldAt`, `getNearbyWorld`, `pushOutOfBuildings`, `spawnWave`, `resetGame`
-- **`js/boss.js`:** `resetBossState`, `spawnBossMines`, `spawnBossEscorts`, `spawnBossSynergyDrones`, `startBossEvadeTurn`, `startBossGroggyTurn`, `onRunTimerZero`, `updateBossSystem`
+- **`js/boss.js`:** `clearBossHazards`, `resetBossState`, `spawnBossMines`, `spawnBossEscorts`, `spawnBossSynergyDrones`, `startBossEvadeTurn`, `startBossGroggyTurn`, `startBossPattern`, `onRunTimerZero`, `updateBossSystem`
 - **`js/cutscene.js`:** `isOpeningCutscene`, `isOpeningActive`, `handleOpeningAnyInput`, `completeOpeningCatch`, `updateOpeningCutscene`, `resetApexCutState`, `isApexFreezePhase`, `isApexSlowPhase`, `syncElasticVisualPositions`, `tryTriggerApexCut`, `triggerApexTestCycle`, `updateApexCutFreeze`, `applyApexReleaseCamera`
 - **`js/physics.js`:** `getInputs`, `findWallAnchor`, `startWebSwing`, `onSwingDown`, `onSwingUp`, `handleBuildingsCollisionAndProximity`
 - **`js/combat.js`:** `applyEnemyDamage`, `triggerShockwave`, `classifyStrikeCase`, `getSpeedDamageMult`, `computeStrikeDamage`, `findCase1Target`, `findBestLockTarget`, `findNextChainTarget`, `hasObstacleBehindTarget`, `detonateLassoSelf`, `onStrikePress`, `updateEnemyMovementAI`, `updateCombat`
-- **`js/renderer.js`:** `getCameraPos`, `makeCamBasis`, `projectWorldPt`, `drawClippedPoly3D`, `drawClippedLine3D`, `drawLightning3D`, `drawPC98Building`, `drawEnemy3D`, `drawBossHazards3D`, `drawSpiderManSprite`, `renderWorld3D`
+- **`js/renderer.js`:** `getCameraPos`, `makeCamBasis`, `projectWorldPt`, `drawClippedPoly3D`, `drawClippedLine3D`, `drawLightning3D`, `drawPC98Building`, `drawEnemy3D`, `drawRing3D`, `drawBossHazards3D`, `drawSpiderManSprite`, `renderWorld3D`
 - **`js/hud.js`:** `drawEnemyRadarHUD`, `drawOffscreenEnemyMarkers`, `renderHUD`
 - **`js/main.js`:** `tick`, `setupControls`, `initApp`
 - **`augments.js`:** `AUGMENTS`, `getLv`, `getOwnedAugmentCount`, `get*Spec()`, `getXpRequirement`, `gainXp`, `resetAugments`, `getAugStats`, `openAugmentDraft`, `confirmAugment`, `drawAugmentDraftUI`, `drawActiveAugmentsHUD`
@@ -69,9 +69,9 @@
 - [x] 웹 프로토타입 코어 완성 (진자 물리·PC-98 비주얼·3-Case STRIKE·4슬롯 Lv.1~3 증강 13종·Step 1~4: 5단계 스타일 랭크/6분 타이머, 5-Cut 옥상 오프닝, 6분 보스전, Lv.3 `APEX CUT` 6종)
 - [x] `game.js` 역할별 9개 모듈(`js/*.js`) 분리 리팩토링 (토큰 절감 & C++ 1:1 포팅 대비)
 - [x] Step 5: 초경량 수동 부저 칩튠 사운드 엔진 (`js/audio.js` — ESP32 `ledcWriteTone` 1:1 단음 SFX 22종 + 1채널 BGM)
-- [ ] 플레이테스트 피드백 4-트랙 개선 (`docs/BACKLOG.md` §1, `1대화 = 1트랙`)
+- [x] 플레이테스트 피드백 4-트랙 개선 (`1대화 = 1트랙` 완료 승격)
   - [x] Track 1: 올가미 소프트락 해소(`LASSO SNAP BOOM!`) · 관성 밧줄 & 흰색 3D 클리핑 거미줄 · `LASSO` 픽셀 슬롯 HUD (#1, #2)
   - [x] Track 2: 스윙 줄당김 상승(+25~30%) · 활강 상승 버그 수정 · 저고도 고속 스윙 (#3, #4, #6)
   - [x] Track 3: C1 적중직전/C2·C3 Shift직전 속도 기준 · 2회전 텀블링 리커버리 & 무적 차단 · `연속 돌격` 저스트 리듬 리워크 (#7, #10, #11; #9는 추후 스타일 랭크 통합으로 이관)
-  - [ ] Track 4: 속도 비례 벽/바닥(추락사) · 적/보스 데미지 상향 · 보스 독립 아레나 순항 AI (#5, #8)
+  - [x] Track 4: 속도 비례 벽/바닥(추락사) · 적/보스 데미지 상향 & 회복 절반 하향 · 보스 독립 아레나 순항 AI & 3D 텔레그래프 4종 패턴(`SOLAR SWEEP`/`ORBITAL LOCK-ON`/`SKY RING`/`REPULSOR DOME`) (#5, #8)
 - [ ] LILYGO T-Display-S3 (PlatformIO + `TFT_eSPI`) C++ 포팅 및 실기기 60fps 검증

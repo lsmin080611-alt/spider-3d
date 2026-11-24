@@ -385,8 +385,11 @@ function handleBuildingsCollisionAndProximity(bList) {
               continue;
             }
 
-            vx = (vx - vn * nx) * 0.25 + nx * Math.min(18.0, Math.abs(vn) * 0.28);
-            vz = (vz - vn * nz) * 0.25 + nz * Math.min(18.0, Math.abs(vn) * 0.28);
+            const absVn = Math.abs(vn);
+            const wallRatio = Math.max(0.0, Math.min(1.0, (absVn - 28.0) / 86.0));
+            const wallDmg = Math.round(12 + wallRatio * 53);
+            vx = (vx - vn * nx) * 0.25 + nx * Math.min(18.0, absVn * 0.28);
+            vz = (vz - vn * nz) * 0.25 + nz * Math.min(18.0, absVn * 0.28);
             vy *= 0.45;
             isSwinging = false;
             inPerfectWindow = false;
@@ -395,8 +398,10 @@ function handleBuildingsCollisionAndProximity(bList) {
             swingReattachCooldown = 0.18;
             diveCharge = 0;
             clearStrikeState();
-            spawnSparks(px, py, pz, PAL.CRIMSON, 12, 34);
-            takeDamage(10, lvElastic > 0 ? 'BOUNCE DEPLETED!' : 'WALL CRASH!');
+            shakeMag = Math.max(shakeMag, 3.0 + wallRatio * 3.5);
+            spawnSparks(px, py, pz, PAL.CRIMSON, 12 + Math.round(wallRatio * 10), 34 + wallRatio * 14);
+            const wallLabel = lvElastic > 0 ? 'BOUNCE DEPLETED!' : (wallDmg >= 40 ? 'HEAVY WALL CRASH!' : 'WALL CRASH!');
+            takeDamage(wallDmg, wallLabel);
           } else {
             const tx = vx - vn * nx;
             const tz = vz - vn * nz;

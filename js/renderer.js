@@ -507,10 +507,35 @@ function drawEnemy3D(e, cb) {
 }
 
 // Step 3 보스전 전용 3D 기믹 렌더링 (공전/부유 기뢰, 반발 펄스 경고, 조준 레이저)
+function drawRing3D(cx, cy, cz, r, segs, plane, cb, col, width) {
+  if (r <= 0.5 || segs < 4) return;
+  let prevX = 0, prevY = 0, prevZ = 0;
+  for (let i = 0; i <= segs; i++) {
+    const a = (i / segs) * Math.PI * 2;
+    const c = Math.cos(a) * r;
+    const s = Math.sin(a) * r;
+    let wx = cx, wy = cy, wz = cz;
+    if (plane === 'XZ') {
+      wx = cx + c; wz = cz + s;
+    } else if (plane === 'XY') {
+      wx = cx + c; wy = cy + s;
+    } else {
+      wy = cy + s; wz = cz + c;
+    }
+    if (i > 0) {
+      drawClippedLine3D([prevX, prevY, prevZ], [wx, wy, wz], cb, col, width);
+    }
+    prevX = wx; prevY = wy; prevZ = wz;
+  }
+}
+
 function drawBossHazards3D(cb) {
   if (!bossActive) return;
 
-  // 1) 공전 및 비행 경로 에너지 기뢰
+  const fastBlink = ((Math.floor(simTime * 18) & 1) === 0);
+  const medBlink = ((Math.floor(simTime * 10) & 1) === 0);
+
+  // 1) 보스 공전 실드 에너지 기뢰
   for (let i = 0; i < bossMines.length; i++) {
     const m = bossMines[i];
     if (m.respawnTimer > 0) continue;
@@ -526,7 +551,7 @@ function drawBossHazards3D(cb) {
     ctx.lineTo(mx, my + mr + 2); ctx.lineTo(mx - mr - 2, my);
     ctx.closePath(); ctx.fill();
 
-    ctx.fillStyle = m.orbitMode ? (blink ? PAL.CRIMSON : '#9b1c48') : (blink ? PAL.ORANGE : PAL.CRIMSON);
+    ctx.fillStyle = blink ? PAL.CRIMSON : '#9b1c48';
     ctx.beginPath();
     ctx.moveTo(mx, my - mr); ctx.lineTo(mx + mr, my);
     ctx.lineTo(mx, my + mr); ctx.lineTo(mx - mr, my);
@@ -536,33 +561,118 @@ function drawBossHazards3D(cb) {
     ctx.fillRect(mx - 1, my - 1, 2, 2);
   }
 
-  // 2) 근접 견제 반발 펄스 경고 링
+  // 2) 패턴 D: REPULSOR DOME (근접 62m 3D 구형 외곽 링 + 수축 타이밍 링)
   if (bossEntity && bossPulseState === 'WARN') {
-    const bp = projectWorldPt(bossEntity.x, bossEntity.y, bossEntity.z, cb);
-    if (bp && bp.z > 4) {
-      const prog = 1.0 - Math.max(0.0, bossPulseTimer / 0.85);
-      const pr = Math.max(8, Math.min(130, ((58.0 * (1.0 - prog * 0.65)) / bp.z) * cb.d));
-      ctx.strokeStyle = ((Math.floor(simTime * 20) & 1) === 0) ? PAL.CRIMSON : PAL.GOLD;
-      ctx.lineWidth = 2;
-      ctx.beginPath(); ctx.arc(bp.x, bp.y, pr, 0, Math.PI * 2); ctx.stroke();
+    const b = bossEntity;
+    const remRatio = Math.max(0.05, Math.min(1.0, bossPulseTimer / 0.95));
+    const outerCol = fastBlink ? PAL.CRIMSON : PAL.GOLD;
+    drawRing3D(b.x, b.y, b.z, 62.0, 12, 'XZ', cb, outerCol, 1);
+    drawRing3D(b.x, b.y, b.z, 62.0, 10, 'XY', cb, PAL.CRIMSON, 1);
+    drawRing3D(b.x, b.y, b.z, 62.0 * remRatio, 10, 'XZ', cb, fastBlink ? '#ffffff' : PAL.GOLD, 2);
+  }
+
+  // 3) 패턴 A: SOLAR SWEEP (예고 부채꼴 평면 궤적 -> 고출력 휩쓸기 빔)
+  if (bossEntity && bossSweep && bossPatternType === 'SWEEP') {
+    const b = bossEntity;
+    const sw = bossSweep;
+    const getEndPt = (frac) => {
+      const ang = sw.startAngle + (sw.endAngle - sw.startAngle) * frac;
+      return [
+        b.x + Math.sin(ang) * sw.length,
+        sw.targetY + (frac - 0.5) * 2.0 * sw.tiltY,
+        b.z + Math.cos(ang) * sw.length
+      ];
+    };
+
+    if (bossPatternStage === 'WARN') {
+      const warnCol = fastBlink ? PAL.CRIMSON : PAL.GOLD;
+      const p0 = getEndPt(0.0);
+      const p1 = getEndPt(1.0);
+      // 부채꼴 양 끝 경계선 (2px)
+      drawClippedLine3D([b.x, b.y, b.z], p0, cb, '#ffffff', 2);
+      drawClippedLine3D([b.x, b.y, b.z], p1, cb, warnCol, 1);
+      // 중간 3가닥 가이드선 + 외곽 호(Arc) 연결로 3D 스윕 평면 명확히 표시
+      let prevArc = p0;
+      for (let k = 1; k <= 4; k++) {
+        const frac = k / 4;
+        const pk = (k === 4) ? p1 : getEndPt(frac);
+        if (k < 4) drawClippedLine3D([b.x, b.y, b.z], pk, cb, warnCol, 1);
+        drawClippedLine3D(prevArc, pk, cb, medBlink ? PAL.GOLD : PAL.CRIMSON, 1);
+        prevArc = pk;
+      }
+      // 시작점 펄스 마커 (빔이 시작될 위치 강조)
+      const sp = projectWorldPt(p0[0], p0[1], p0[2], cb);
+      if (sp && sp.z > 4) {
+        ctx.strokeStyle = '#ffffff';
+        ctx.lineWidth = 1;
+        ctx.strokeRect(Math.round(sp.x) - 3, Math.round(sp.y) - 3, 6, 6);
+      }
+    } else if (bossPatternStage === 'ACTIVE') {
+      // 잔여 스윕 경계 가이드
+      const pEnd = getEndPt(1.0);
+      drawClippedLine3D([b.x, b.y, b.z], pEnd, cb, '#8b1e3f', 1);
+      // 현재 휩쓸고 있는 고출력 솔라 빔
+      const frac = Math.max(0.0, Math.min(1.0, (sw.curAngle - sw.startAngle) / ((sw.endAngle - sw.startAngle) || 0.001)));
+      const pCur = getEndPt(frac);
+      drawClippedLine3D([b.x, b.y, b.z], pCur, cb, PAL.INDIGO_OUTLINE, 6);
+      drawClippedLine3D([b.x, b.y, b.z], pCur, cb, PAL.CRIMSON, 4);
+      drawClippedLine3D([b.x, b.y, b.z], pCur, cb, PAL.GOLD, 2);
+      drawClippedLine3D([b.x, b.y, b.z], pCur, cb, '#ffffff', 1);
     }
   }
 
-  // 3) 조준 레이저 (AIM 예고선 -> FIRE 고출력 빔)
-  if (bossEntity && (bossLaserState === 'AIM' || bossLaserState === 'FIRE')) {
-    const b = bossEntity;
-    const bx2 = b.x + (bossLaserTx - b.x) * 2.2;
-    const by2 = b.y + (bossLaserTy - b.y) * 2.2;
-    const bz2 = b.z + (bossLaserTz - b.z) * 2.2;
-    if (bossLaserState === 'AIM') {
-      const blink = ((Math.floor(simTime * 22) & 1) === 0);
-      drawClippedLine3D([b.x, b.y, b.z], [bx2, by2, bz2], cb, blink ? PAL.CRIMSON : PAL.GOLD, 1);
-    } else {
-      drawClippedLine3D([b.x, b.y, b.z], [bx2, by2, bz2], cb, PAL.INDIGO_OUTLINE, 6);
-      drawClippedLine3D([b.x, b.y, b.z], [bx2, by2, bz2], cb, PAL.CRIMSON, 4);
-      drawClippedLine3D([b.x, b.y, b.z], [bx2, by2, bz2], cb, PAL.GOLD, 2);
-      drawClippedLine3D([b.x, b.y, b.z], [bx2, by2, bz2], cb, '#ffffff', 1);
+  // 4) 패턴 B: ORBITAL LOCK-ON (3D 구체 폭발 경계 교차 링 + 수축 카운트다운 링)
+  for (let i = 0; i < bossBombZones.length; i++) {
+    const z = bossBombZones[i];
+    if (z.detonated) continue;
+    const remRatio = Math.max(0.04, Math.min(1.0, z.timer / z.maxTimer));
+    const urgent = (remRatio < 0.35);
+    const outerCol = urgent ? (fastBlink ? '#ffffff' : PAL.CRIMSON) : (medBlink ? PAL.CRIMSON : PAL.ORANGE);
+    // 실제 폭발 범위 외곽 3D 교차 링 (수평 + 수직)
+    drawRing3D(z.x, z.y, z.z, z.r, 8, 'XZ', cb, outerCol, urgent ? 2 : 1);
+    drawRing3D(z.x, z.y, z.z, z.r, 8, 'XY', cb, PAL.ORANGE, 1);
+    // 중심을 향해 수축하는 타이밍 링
+    drawRing3D(z.x, z.y, z.z, z.r * remRatio, 8, 'XZ', cb, urgent ? '#ffffff' : PAL.GOLD, 2);
+    // 중심 십자 마커
+    const zp = projectWorldPt(z.x, z.y, z.z, cb);
+    if (zp && zp.z > 4) {
+      const cx = Math.round(zp.x), cy = Math.round(zp.y);
+      ctx.fillStyle = urgent ? '#ffffff' : PAL.GOLD;
+      ctx.fillRect(cx - 3, cy, 7, 1);
+      ctx.fillRect(cx, cy - 3, 1, 7);
     }
+  }
+
+  // 5) 패턴 C: SKY RING (고도층 이중 8각 경고 링 -> 16각 고출력 확장 에너지 링)
+  for (let i = 0; i < bossSkyRings.length; i++) {
+    const rg = bossSkyRings[i];
+    if (!rg.active) {
+      const warnCol = fastBlink ? PAL.CRIMSON : PAL.GOLD;
+      drawRing3D(rg.x, rg.y, rg.z, 55.0, 8, 'XZ', cb, warnCol, 2);
+      drawRing3D(rg.x, rg.y, rg.z, 125.0, 8, 'XZ', cb, PAL.ORANGE, 1);
+      // 위험 고도대 두께(±bandH) 4방향 세로 기둥
+      for (let k = 0; k < 4; k++) {
+        const a = k * (Math.PI * 0.5) + simTime * 0.4;
+        const px1 = rg.x + Math.cos(a) * 55.0;
+        const pz1 = rg.z + Math.sin(a) * 55.0;
+        drawClippedLine3D([px1, rg.y - rg.bandH, pz1], [px1, rg.y + rg.bandH, pz1], cb, '#ffffff', 1);
+      }
+    } else {
+      drawRing3D(rg.x, rg.y, rg.z, rg.r, 14, 'XZ', cb, PAL.CRIMSON, 3);
+      drawRing3D(rg.x, rg.y, rg.z, rg.r, 14, 'XZ', cb, fastBlink ? '#ffffff' : PAL.GOLD, 1);
+      drawRing3D(rg.x, rg.y + rg.bandH * 0.5, rg.z, rg.r, 12, 'XZ', cb, PAL.ORANGE, 1);
+      drawRing3D(rg.x, rg.y - rg.bandH * 0.5, rg.z, rg.r, 12, 'XZ', cb, PAL.ORANGE, 1);
+    }
+  }
+
+  // 6) 플레이어가 텔레그래프 위험 범위 내부에 있을 때 화면 네 모서리 점멸 경고 브래킷
+  if (bossPlayerInDanger && fastBlink) {
+    ctx.fillStyle = PAL.CRIMSON;
+    // 좌상 / 우상 / 좌하 / 우하 L자 브래킷
+    ctx.fillRect(3, 3, 14, 2); ctx.fillRect(3, 3, 2, 12);
+    ctx.fillRect(LCD_W - 17, 3, 14, 2); ctx.fillRect(LCD_W - 5, 3, 2, 12);
+    ctx.fillRect(3, LCD_H - 5, 14, 2); ctx.fillRect(3, LCD_H - 15, 2, 12);
+    ctx.fillRect(LCD_W - 17, LCD_H - 5, 14, 2); ctx.fillRect(LCD_W - 5, LCD_H - 15, 2, 12);
   }
 }
 

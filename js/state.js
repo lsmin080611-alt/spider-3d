@@ -116,14 +116,23 @@ let bossGroggyHits = 0;
 let bossEvadeFlash = 0.0;
 let bossLastCutSec = 0.0;
 let bossEscortTimer = 0.0;
-let bossFireTimer = 0.0;
-let bossPulseState = 'IDLE'; // 'IDLE' | 'WARN'
+let bossArenaX = 0.0, bossArenaZ = 0.0;
+let bossCruiseTime = 0.0;
+let bossCruiseDir = 1;
+let bossHoverLockTimer = 0.0;
+let bossPatternCd = 2.4;
+let bossPatternType = 'NONE';   // 'NONE' | 'SWEEP' | 'BOMB' | 'RING'
+let bossPatternStage = 'IDLE';  // 'IDLE' | 'WARN' | 'ACTIVE' | 'RECOVER'
+let bossPatternTimer = 0.0;
+let bossPatternDuration = 1.0;
+let bossLastPattern = '';
+let bossSweep = null;           // { baseYaw, startAngle, endAngle, curAngle, targetY, tiltY, length, dir, pass, maxPasses }
+let bossBombZones = [];         // [{ x, y, z, r, timer, maxTimer, detonated }]
+let bossSkyRings = [];          // [{ x, y, z, r, maxR, bandH, warnTimer, maxWarn, active, hitDone }]
+let bossPulseState = 'IDLE';    // 'IDLE' | 'WARN'
 let bossPulseTimer = 0.0;
 let bossPulseCd = 3.5;
-let bossLaserState = 'IDLE'; // 'IDLE' | 'AIM' | 'FIRE'
-let bossLaserTimer = 0.0;
-let bossLaserCd = 5.0;
-let bossLaserTx = 0.0, bossLaserTy = 95.0, bossLaserTz = 0.0;
+let bossPlayerInDanger = false;
 let bossMines = [];
 let bossDeathX = 0.0, bossDeathY = 95.0, bossDeathZ = 0.0;
 let bossDeathBoomTimer = 0.0;

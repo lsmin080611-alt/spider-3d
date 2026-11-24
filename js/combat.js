@@ -43,10 +43,15 @@ function applyEnemyDamage(e, dmg, col, isCrit = false, dominoDepth = 0, showOneS
       enemies = [];
       projectiles = [];
       bossMines = [];
+      bossBombZones = [];
+      bossSkyRings = [];
+      bossSweep = null;
+      bossPatternType = 'NONE';
+      bossPatternStage = 'IDLE';
+      bossPlayerInDanger = false;
       lassoTargets = [];
       bossEntity = null;
       bossPulseState = 'IDLE';
-      bossLaserState = 'IDLE';
       clearStrikeState();
       kills++;
       hitStopTimer = 0.14;
@@ -80,8 +85,8 @@ function applyEnemyDamage(e, dmg, col, isCrit = false, dominoDepth = 0, showOneS
     multiKillCount++;
     multiKillWindow = 0.65;
 
-    // 티어별 회복량, 스타일 포인트, 고정 경험치(1.0x 고정) 지급
-    const heal = e.tier === 'ELITE' ? 12 : (e.tier === 'MEDIUM' ? 5 : 2);
+    // 티어별 회복량(Track 4 절반 하향), 스타일 포인트, 고정 경험치(1.0x 고정) 지급
+    const heal = e.tier === 'ELITE' ? 6 : (e.tier === 'MEDIUM' ? 2 : 1);
     hp = Math.min(MAX_HP, hp + heal);
 
     const killStyle = e.tier === 'ELITE' ? 20 : (e.tier === 'MEDIUM' ? 10 : 3);
@@ -796,7 +801,7 @@ function updateCombat(dt, oldX, oldY, oldZ, bList, totalSpeed) {
   if (!bossActive && enemies.length === 0) {
     if (waveClearDelay <= 0) {
       waveClearDelay = 1.25;
-      hp = Math.min(MAX_HP, hp + 15);
+      hp = Math.min(MAX_HP, hp + 8);
       const clearXp = 90 + wave * 25;
       gainXp(clearXp);
       addPopup('WAVE ' + wave + ' CLEAR! +' + clearXp + 'XP', PAL.EMERALD, 3);
@@ -1331,7 +1336,7 @@ function updateCombat(dt, oldX, oldY, oldZ, bList, totalSpeed) {
           e.vx = -(pushX / pLen) * 32.0;
           e.vz = -(pushZ / pLen) * 32.0;
         }
-        takeDamage(e.tier === 'SWARM' ? 8 : 12, e.tier === 'SWARM' ? 'SWARM BITE!' : 'BODY COLLISION!');
+        takeDamage(e.tier === 'SWARM' ? 14 : 20, e.tier === 'SWARM' ? 'SWARM BITE!' : 'BODY COLLISION!');
       }
     }
   }
@@ -1358,7 +1363,7 @@ function updateCombat(dt, oldX, oldY, oldZ, bList, totalSpeed) {
       } else {
         spawnSparks(pr.x, pr.y, pr.z, PAL.CRIMSON, 12, 28);
         projectiles.splice(i, 1);
-        takeDamage(10, 'PLASMA HIT!');
+        takeDamage(18, 'PLASMA HIT!');
       }
     }
   }
