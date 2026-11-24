@@ -192,6 +192,55 @@ function renderHUD(cb, totalSpeed) {
 
   if (!augmentDraftOpen && !gameOver && openingPhase === 'ACTIVE' && apexLetterbox <= 0.35) {
     drawOffscreenEnemyMarkers(cb);
+
+    // [Track 3] 연속 돌격 저스트 리듬 수축 링 (0.20~0.46s 창 플래시, ESP32 경량 원형 벡터)
+    const rcxJ = (LCD_W * 0.5) | 0;
+    const rcyJ = (LCD_H * 0.5 - 4) | 0;
+    if (justChainElapsed >= 0.0 && justChainElapsed <= JUST_CHAIN_WINDOW_END && getLv('strike_rush') > 0) {
+      const inJust = (justChainElapsed >= JUST_CHAIN_MIN && justChainElapsed <= JUST_CHAIN_MAX);
+      const expired = (justChainElapsed > JUST_CHAIN_MAX);
+      const blink = ((Math.floor(simTime * 32) & 1) === 0);
+
+      // 목표 기준 링 (반경 15px)
+      ctx.beginPath();
+      ctx.arc(rcxJ, rcyJ, 15, 0, Math.PI * 2);
+      ctx.lineWidth = inJust ? 2 : 1;
+      ctx.strokeStyle = inJust ? (blink ? PAL.GOLD : PAL.NEON_CYAN) : (expired ? '#475569' : '#64748b');
+      ctx.stroke();
+
+      // 수축 링 (34px -> 15px -> 11px)
+      let shrinkR = 15;
+      if (justChainElapsed < JUST_CHAIN_MIN) {
+        shrinkR = 34 - (justChainElapsed / JUST_CHAIN_MIN) * 19;
+      } else if (inJust) {
+        shrinkR = 15 - ((justChainElapsed - JUST_CHAIN_MIN) / (JUST_CHAIN_MAX - JUST_CHAIN_MIN)) * 4;
+      } else {
+        shrinkR = 11;
+      }
+      ctx.beginPath();
+      ctx.arc(rcxJ, rcyJ, Math.max(8, shrinkR), 0, Math.PI * 2);
+      ctx.lineWidth = inJust ? 2 : 1.5;
+      ctx.strokeStyle = inJust ? (blink ? '#ffffff' : PAL.GOLD) : (expired ? '#334155' : PAL.NEON_CYAN);
+      ctx.stroke();
+
+      if (inJust) {
+        ctx.font = 'bold 8px Consolas, monospace';
+        ctx.textAlign = 'center';
+        ctx.fillStyle = PAL.INDIGO_OUTLINE;
+        ctx.fillText('JUST!', rcxJ + 1, rcyJ - 18);
+        ctx.fillStyle = blink ? PAL.GOLD : '#ffffff';
+        ctx.fillText('JUST!', rcxJ, rcyJ - 19);
+        ctx.textAlign = 'left';
+      }
+    }
+    if (justChainFlashTimer > 0.0) {
+      const fProg = 1.0 - (justChainFlashTimer / 0.26);
+      ctx.beginPath();
+      ctx.arc(rcxJ, rcyJ, 15 + fProg * 18, 0, Math.PI * 2);
+      ctx.lineWidth = 2;
+      ctx.strokeStyle = PAL.GOLD;
+      ctx.stroke();
+    }
   }
 
   const drawPC98Box = (x, y, w, h, accent = '#68b0f0') => {
@@ -206,7 +255,7 @@ function renderHUD(cb, totalSpeed) {
 
   if (!isOpeningCutscene() && apexLetterbox <= 0.35) {
     const hpCol = hp > 55 ? PAL.EMERALD : (hp > 25 ? PAL.GOLD : PAL.CRIMSON);
-    const hudBorder = strikeMode === 1 ? PAL.ORANGE : (strikeMode === 3 ? (isChainRush ? PAL.NEON_PINK : PAL.NEON_CYAN) : '#68b0f0');
+    const hudBorder = strikeMode === 1 ? PAL.ORANGE : (strikeMode === 3 ? (isChainRush ? PAL.NEON_PINK : PAL.NEON_CYAN) : (strikeTumbleTimer > 0 ? PAL.GOLD : '#68b0f0'));
     drawPC98Box(4, 4, 114, 38, hudBorder);
 
     ctx.font = 'bold 8px Consolas, monospace';
@@ -219,8 +268,8 @@ function renderHUD(cb, totalSpeed) {
     ctx.strokeStyle = '#cceeff';
     ctx.strokeRect(35.5, 6.5, 78, 7);
 
-    const spdLabel = strikeMode === 1 ? 'C1!' : (strikeMode === 3 ? 'C3!' : (isGliding ? 'GLD' : 'SPD'));
-    ctx.fillStyle = strikeMode !== 0 ? hudBorder : (isGliding ? PAL.EMERALD : '#b8e4ff');
+    const spdLabel = strikeMode === 1 ? 'C1!' : (strikeMode === 3 ? 'C3!' : (strikeTumbleTimer > 0 ? 'TMB' : (isGliding ? 'GLD' : 'SPD')));
+    ctx.fillStyle = strikeMode !== 0 ? hudBorder : (strikeTumbleTimer > 0 ? PAL.GOLD : (isGliding ? PAL.EMERALD : '#b8e4ff'));
     ctx.fillText(spdLabel, 7, 24);
     const gLen = Math.min(77, ((totalSpeed / 180.0) * 77) | 0);
     ctx.fillStyle = '#1c2440';

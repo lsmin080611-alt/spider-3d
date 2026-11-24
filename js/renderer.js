@@ -603,7 +603,7 @@ function drawSpiderManSprite(cb, totalSpeed) {
     poseKey = 'DIVE';
   } else if (isSwinging) {
     poseKey = anchorSide >= 0 ? 'SWING_R' : 'SWING_L';
-  } else if (doingFlip) {
+  } else if (doingFlip || strikeTumbleTimer > 0) {
     poseKey = 'FLIP';
   } else if (isGliding) {
     poseKey = 'GLIDE';
@@ -662,7 +662,7 @@ function drawSpiderManSprite(cb, totalSpeed) {
     ctx.restore();
   }
 
-  // Visual Energy Aura for Active STRIKE Cases or Post-Strike Grace Shield
+  // Visual Energy Aura for Active STRIKE Cases, Just Chain Parry, or Post-Strike Grace
   if (strikeMode !== 0) {
     if (strikeMode === 3 && strikePhase === 'HANG_SHOOT') {
       ctx.strokeStyle = (Math.floor(simTime * 28) & 1) ? PAL.GOLD : PAL.NEON_PINK;
@@ -678,10 +678,15 @@ function drawSpiderManSprite(cb, totalSpeed) {
       }
     } else {
       const auraR = Math.round(screenH * 0.65 + Math.sin(simTime * 34) * 2.5);
-      ctx.strokeStyle = strikeMode === 1 ? PAL.ORANGE : (isChainRush ? PAL.NEON_PINK : PAL.NEON_CYAN);
+      ctx.strokeStyle = justChainParryTimer > 0 ? PAL.GOLD : (strikeMode === 1 ? PAL.ORANGE : (isChainRush ? PAL.NEON_PINK : PAL.NEON_CYAN));
       ctx.lineWidth = 2;
       ctx.beginPath(); ctx.arc(cx, cy, auraR, 0, Math.PI * 2); ctx.stroke();
     }
+  } else if (justChainParryTimer > 0 && !apexActive) {
+    const shieldR = Math.round(screenH * 0.66);
+    ctx.strokeStyle = (Math.floor(simTime * 30) & 1) ? PAL.GOLD : PAL.NEON_CYAN;
+    ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.arc(cx, cy, shieldR, 0, Math.PI * 2); ctx.stroke();
   } else if (strikeGraceTimer > 0 && !apexActive) {
     const shieldR = Math.round(screenH * 0.62);
     ctx.setLineDash([3, 3]);

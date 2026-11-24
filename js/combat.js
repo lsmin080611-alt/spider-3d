@@ -181,7 +181,7 @@ function getSpeedDamageMult(spd) {
 }
 
 // 전 STRIKE(Case1/Case2/Case3/핀볼) 통합 속도·스타일 랭크 데미지 중앙 계산 (타격 판정 및 1-HIT 예고 공용)
-function computeStrikeDamage(mode, entrySpd, entryDist, downVy, isChain) {
+function computeStrikeDamage(mode, entrySpd, entryDist, downVy, isChain, impactSpd = 0, chainTargetMult = 1.0) {
   const aug = getAugStats();
   const rankInfo = STYLE_RANKS[styleRankIdx] || STYLE_RANKS[0];
   let rawDmg = 26.0;
@@ -189,9 +189,10 @@ function computeStrikeDamage(mode, entrySpd, entryDist, downVy, isChain) {
   let isCrit = false;
 
   if (mode === 1) {
-    // Case 1 (SLAM!): 하강·진입 속도 통합 스케일링 + 급강하 가중치 (저속 약낙하 억제, 고속 급강하 폭딜)
+    // Case 1 (SLAM!): 고고도 저속 진입 후 낙하 가속하므로 적중 직전 실제 속도(impactSpd/fallSpd) 기준 적용
     const fallSpd = Math.max(24.0, downVy, peakFallSpeed);
-    const effSpd = Math.max(entrySpd, fallSpd * 1.15);
+    const liveSpd = impactSpd > 0 ? impactSpd : entrySpd;
+    const effSpd = Math.max(liveSpd, fallSpd * 1.15);
     rawDmg = 26.0 * getSpeedDamageMult(effSpd) * (1.15 + diveCharge * 0.25);
     isCrit = effSpd >= 92.0 || getLv('heavy_suit') >= 3;
   } else if (isChain) {
@@ -201,7 +202,7 @@ function computeStrikeDamage(mode, entrySpd, entryDist, downVy, isChain) {
     rawDmg = baseChain * getSpeedDamageMult(entrySpd);
     if (entrySpd >= 95.0) isCrit = true;
   } else {
-    // Case 2 / Case 3: 모든 수동 STRIKE에 통합 속도 배율 적용 (저속 SHIFT 난타 18~26 dmg)
+    // Case 2 / Case 3: Shift 직전 진짜 속도(entrySpd) 기준 통합 속도 배율 적용 (저속 SHIFT 난타 18~26 dmg)
     rawDmg = 26.0 * getSpeedDamageMult(entrySpd);
     if (entrySpd >= 95.0) isCrit = true;
     if (entryDist >= 75.0) {
@@ -238,11 +239,14 @@ function computeStrikeDamage(mode, entrySpd, entryDist, downVy, isChain) {
     if (peakFallSpeed > 80.0) isCrit = true;
   }
 
-  // [연속 돌격]: 수동 Shift 연타 및 연쇄 핀볼 적중 스택 비례 증폭
+  // [연속 돌격]: 저스트 리듬 체인 / 연쇄 핀볼 스택 비례 증폭 + 타겟 전환/동일 표적 보정
   const rushSpec = getStrikeRushSpec();
   if (rushSpec && strikeRushStack > 0 && strikeRushTimer > 0) {
     rawDmg *= (1.0 + strikeRushStack * rushSpec.dmgPerStack);
     if (strikeRushStack >= rushSpec.critAt) isCrit = true;
+  }
+  if (chainTargetMult !== 1.0 && !isChain) {
+    rawDmg *= chainTargetMult;
   }
 
   // [탄성 반발 Lv.3 각성]: 벽 반사 후 2.5초 내 다음 STRIKE 치명타(1.35x)
@@ -407,7 +411,7 @@ function detonateLassoSelf(cdMult, overReset) {
   isDiving = false;
   autoCatchAfterJump = false;
   strikeCooldown = overReset ? 0.0 : (0.28 * cdMult);
-  strikeGraceTimer = Math.max(strikeGraceTimer, 0.35);
+  strikeGraceTimer = Math.max(strikeGraceTimer, 0.20);
 
   const awakened = tiedCount >= lassoSpec.awakenCount;
   const boomR = (52.0 + tiedCount * 7.0) * (awakened ? 1.5 : 1.0);
@@ -445,14 +449,71 @@ function onStrikePress() {
   if (handleOpeningAnyInput()) return;
   if (isOpeningActive()) return;
   if (isApexInputLocked()) return;
-  if (strikeCooldown > 0 || strikeMode !== 0) return;
+  if (strikeMode !== 0) return;
 
   const aug = getAugStats();
   const rushSpec = getStrikeRushSpec();
-  const cdMult = rushSpec ? rushSpec.cdMult : 1.0;
-  const caseType = classifyStrikeCase();
   const totalSpd = Math.hypot(vx, vy, vz);
   const overReset = (getLv('overdrive') >= 3 && totalSpd >= 115.0);
+
+  // [Track 3] 공중 2회전 텀블링 리커버리 중 STRIKE 봉인 (연속 돌격 저스트 리듬 창 0.20~0.46s만 캔슬 허용)
+  let pendingJustChain = false;
+  if (strikeTumbleTimer > 0 && !overReset) {
+    if (rushSpec && justChainElapsed >= 0.0) {
+      if (justChainElapsed < JUST_CHAIN_MIN) {
+        // 조기 광클 페널티: 스택 초기화 + 리커버리 연장
+        strikeRushStack = 0;
+        strikeRushTimer = 0.0;
+        justChainElapsed = -1.0;
+        strikeTumbleTimer = Math.min(2.0, strikeTumbleTimer + 0.35);
+        strikeTumbleDur = Math.max(strikeTumbleDur, strikeTumbleTimer);
+        addPopup('TOO EARLY!', PAL.CRIMSON, 2);
+        if (typeof playSfx === 'function') playSfx('hit');
+        return;
+      }
+      if (justChainElapsed <= JUST_CHAIN_MAX) {
+        pendingJustChain = true;
+      } else {
+        return;
+      }
+    } else {
+      return;
+    }
+  } else {
+    if (strikeCooldown > 0 && !overReset) return;
+    if (rushSpec && justChainElapsed >= JUST_CHAIN_MIN && justChainElapsed <= JUST_CHAIN_MAX) {
+      pendingJustChain = true;
+    }
+  }
+
+  const cdMult = rushSpec ? rushSpec.cdMult : 1.0;
+  const caseType = classifyStrikeCase();
+
+  const commitJustChain = (tgt) => {
+    strikeTumbleTimer = 0.0;
+    doingFlip = false;
+    flipAngle = 0.0;
+    justChainElapsed = -1.0;
+    if (pendingJustChain && rushSpec) {
+      strikeIsJustChain = true;
+      strikeRushStack = Math.min(rushSpec.maxStack, strikeRushStack + 1);
+      strikeRushTimer = 2.8;
+      justChainParryTimer = 0.18;
+      justChainFlashTimer = 0.26;
+      const switched = (justChainLastTarget !== null && tgt !== null && tgt !== justChainLastTarget);
+      const sameTgt = (justChainLastTarget !== null && tgt !== null && tgt === justChainLastTarget);
+      justChainTargetMult = switched ? 1.15 : (sameTgt ? 0.75 : 1.0);
+      addPopup(
+        switched ? 'JUST SWITCH!! +15%' : (sameTgt ? 'JUST CHAIN! -25%' : 'JUST CHAIN!!'),
+        switched ? PAL.GOLD : PAL.NEON_CYAN,
+        2
+      );
+      if (typeof playSfx === 'function') playSfx('perfect_release');
+    } else {
+      strikeIsJustChain = false;
+      justChainTargetMult = 1.0;
+    }
+  };
 
   chainBouncesLeft = getChainBounceCount();
   chainVisited = [];
@@ -462,8 +523,10 @@ function onStrikePress() {
   if (caseType === 1) {
     const target = findCase1Target();
     if (!target && lassoTargets.length > 0 && lassoTargets.length >= enemies.length) {
+      commitJustChain(null);
       if (detonateLassoSelf(cdMult, overReset)) return;
     }
+    commitJustChain(target);
     isSwinging = false;
     inPerfectWindow = false;
     isGliding = false;
@@ -473,7 +536,7 @@ function onStrikePress() {
     strikePhase = 'RUSH';
     strikeTarget = target;
     strikeTimer = 1.25;
-    strikeEntrySpd = Math.max(78.0, totalSpd);
+    strikeEntrySpd = totalSpd;
     strikeEntryDist = target ? Math.hypot(target.x - px, target.y - py, target.z - pz) : 80.0;
     strikeCooldown = overReset ? 0.0 : (0.25 * cdMult);
     afterimageTimer = 0.7;
@@ -487,7 +550,9 @@ function onStrikePress() {
 
     shakeMag = Math.max(shakeMag, 2.2);
     spawnSparks(px, py, pz, PAL.ORANGE, 10, 28);
-    addPopup(target ? 'DIVE SLAM LOCK!' : 'METEOR SLAM!', PAL.ORANGE, 2);
+    if (!strikeIsJustChain) {
+      addPopup(target ? 'DIVE SLAM LOCK!' : 'METEOR SLAM!', PAL.ORANGE, 2);
+    }
     if (typeof playSfx === 'function') playSfx('strike_dive');
     return;
   }
@@ -497,11 +562,15 @@ function onStrikePress() {
     target = findBestLockTarget();
   }
   if (!target) {
-    if (lassoTargets.length > 0 && detonateLassoSelf(cdMult, overReset)) return;
+    if (lassoTargets.length > 0) {
+      commitJustChain(null);
+      if (detonateLassoSelf(cdMult, overReset)) return;
+    }
     addPopup('NO TARGET', '#94a3b8', 1);
     return;
   }
 
+  commitJustChain(target);
   isSwinging = false;
   inPerfectWindow = false;
   isGliding = false;
@@ -533,7 +602,7 @@ function onStrikePress() {
     shakeMag = Math.max(shakeMag, 2.8);
     spawnSparks(px, py, pz, PAL.NEON_CYAN, 10, 30);
     spawnSparks(target.x, target.y, target.z, PAL.GOLD, 10, 32);
-    addPopup('HYPER SNAP!!', PAL.NEON_CYAN, 2);
+    if (!strikeIsJustChain) addPopup('HYPER SNAP!!', PAL.NEON_CYAN, 2);
     if (typeof playSfx === 'function') playSfx('strike_hyper');
   } else {
     strikePhase = 'HANG_SHOOT';
@@ -551,7 +620,7 @@ function onStrikePress() {
 
     shakeMag = Math.max(shakeMag, 1.8);
     spawnSparks(px, py, pz, PAL.NEON_PINK, 10, 26);
-    addPopup(CARTOON_MOTIONS[strikeMotionIdx].word, PAL.NEON_PINK, 2);
+    if (!strikeIsJustChain) addPopup(CARTOON_MOTIONS[strikeMotionIdx].word, PAL.NEON_PINK, 2);
     if (typeof playSfx === 'function') playSfx('strike_pull');
   }
 }
@@ -842,7 +911,10 @@ function updateCombat(dt, oldX, oldY, oldZ, bList, totalSpeed) {
   const segDx = px - oldX, segDy = py - oldY, segDz = pz - oldZ;
   const segLenSq = segDx * segDx + segDy * segDy + segDz * segDz;
   const isActiveAttack = (strikeMode !== 0 && strikePhase === 'RUSH');
-  let isStrikeProtected = (strikeMode !== 0) || (strikeGraceTimer > 0);
+  // HANG_SHOOT(공중 정지 조준) 중 무적 제거: RUSH 돌진 중 또는 짧은 유예(0.20s)에만 보호
+  let isStrikeProtected = isActiveAttack || (strikeGraceTimer > 0);
+  const curSpdNow = Math.hypot(vx, vy, vz);
+  const canDeflectProj = (isActiveAttack && (strikeEntrySpd >= 95.0 || (strikeMode === 1 && curSpdNow >= 95.0))) || (justChainParryTimer > 0);
   const hMoveSpd = Math.hypot(vx, vz);
   const backSin = hMoveSpd > 4.0 ? (vx / hMoveSpd) : Math.sin(camYaw);
   const backCos = hMoveSpd > 4.0 ? (vz / hMoveSpd) : Math.cos(camYaw);
@@ -966,7 +1038,7 @@ function updateCombat(dt, oldX, oldY, oldZ, bList, totalSpeed) {
         const preSpd = Math.hypot(vx, vy, vz) || 1.0;
         const dirX = vx / preSpd, dirY = vy / preSpd, dirZ = vz / preSpd;
 
-        const calc = computeStrikeDamage(curMode, strikeEntrySpd, strikeEntryDist, Math.max(0, -vy), isChainRush);
+        const calc = computeStrikeDamage(curMode, strikeEntrySpd, strikeEntryDist, Math.max(0, -vy), isChainRush, preSpd, justChainTargetMult);
         const dmg = calc.dmg;
         const isCrit = calc.isCrit;
         const impactCol = curMode === 1 ? PAL.ORANGE : (isChainRush ? PAL.NEON_PINK : (isCrit ? PAL.GOLD : (dmg <= 30 ? '#cbd5e1' : PAL.NEON_CYAN)));
@@ -977,8 +1049,8 @@ function updateCombat(dt, oldX, oldY, oldZ, bList, totalSpeed) {
         addStylePoints((curMode === 1 || strikeEntrySpd >= 95.0) ? 12 : 8, 5.0);
         afterimageTimer = 0.75;
 
-        // 타격 직후 0.65초 공격 보호 유예 + 타격 지점 영거리 투사체 소거 (초중력 Lv.3 SLAM은 95m 광역 소거!)
-        strikeGraceTimer = 0.65;
+        // 타격 직후 0.20초 짧은 몸체 보호 유예 + 타격 지점 영거리 투사체 소거 (초중력 Lv.3 SLAM은 95m 광역 소거!)
+        strikeGraceTimer = 0.20;
         isStrikeProtected = true;
 
         const targetX = e.x, targetY = e.y, targetZ = e.z;
@@ -1024,11 +1096,15 @@ function updateCombat(dt, oldX, oldY, oldZ, bList, totalSpeed) {
           }
         }
 
-        // [연속 돌격] 수동 STRIKE 및 연쇄 핀볼 적중 모두 RUSH 스택 누적!
+        // [연속 돌격] 저스트 체인은 발동 시 누적, 연쇄 핀볼은 적중 시 누적, 일반 타격은 기존 유지시간만 갱신
         const rushSpec = getStrikeRushSpec();
         if (rushSpec) {
-          strikeRushStack = Math.min(rushSpec.maxStack, strikeRushStack + 1);
-          strikeRushTimer = 2.8;
+          if (isChainRush) {
+            strikeRushStack = Math.min(rushSpec.maxStack, strikeRushStack + 1);
+            strikeRushTimer = 2.8;
+          } else if (strikeRushStack > 0) {
+            strikeRushTimer = 2.8;
+          }
         }
 
         // [올가미 스윙] 포획된 적 전원 일괄 기폭!
@@ -1138,15 +1214,17 @@ function updateCombat(dt, oldX, oldY, oldZ, bList, totalSpeed) {
         } else {
           const blockedBehind = bossForceRebound || hasObstacleBehindTarget(e, dirX, dirY, dirZ, bList);
           if (blockedBehind) {
-            const rebSpd = Math.max(30.0, Math.min(56.0, Math.max(strikeEntrySpd, preSpd * 0.48) * 0.58));
+            // Case 2/3 반동 속도는 Shift 직전 진짜 속도(strikeEntrySpd) 기준 엄수
+            const rebSpd = Math.max(26.0, Math.min(54.0, strikeEntrySpd * 0.58));
             vx = -dirX * rebSpd * 0.78;
             vz = -dirZ * rebSpd * 0.78;
-            vy = Math.max(30.0, Math.min(52.0, -dirY * rebSpd * 0.40 + 28.0));
+            vy = Math.max(28.0, Math.min(50.0, -dirY * rebSpd * 0.40 + 26.0));
             doingFlip = true;
             flipAngle = 0.0;
             impactLabel = 'SAFE REBOUND!';
           } else {
-            const pierceSpd = Math.min(115.0 * aug.maxSpeedMult, Math.max(BASE_PIERCE_SPD, preSpd * 0.72));
+            // Case 2/3 관통 속도는 Shift 직전 진짜 속도(strikeEntrySpd) 기준 엄수 (저속 공짜 가속 차단)
+            const pierceSpd = Math.min(115.0 * aug.maxSpeedMult, Math.max(32.0, strikeEntrySpd * 0.88));
             vx = dirX * pierceSpd;
             vz = dirZ * pierceSpd;
             vy = Math.max(16.0, Math.min(56.0, dirY * pierceSpd * 0.65 + 14.0));
@@ -1156,7 +1234,7 @@ function updateCombat(dt, oldX, oldY, oldZ, bList, totalSpeed) {
           }
         }
 
-        // [연속 돌격] 벡터가 바뀌어도 타격 후 속력 보존(85%/95%/105%) -> 정지 없는 고속 연타 연계!
+        // [연속 돌격] 벡터가 바뀌어도 타격 후 속력 보존(85%/95%/105%) -> 저스트 리듬 고속 연계!
         if (rushSpec) {
           const outSpd = Math.hypot(vx, vy, vz);
           const wantSpd = Math.min(185.0 * aug.maxSpeedMult, strikeEntrySpd * rushSpec.keepSpdRatio);
@@ -1178,6 +1256,24 @@ function updateCombat(dt, oldX, oldY, oldZ, bList, totalSpeed) {
         // [올가미 스윙 Lv.3 각성] 4명+ 기폭 시 안전 상향 반동
         if (lassoAwakenBounce) {
           vy = Math.max(vy, 46.0);
+        }
+
+        // [Track 3] 공중 2회전 텀블링 리커버리(1.35s, STRIKE 봉인 / 이동·스윙 가능) + 연속 돌격 저스트 리듬 창 오픈
+        const skipTumble = (chainSpec && chainSpec.endBonus) || (getLv('overdrive') >= 3 && Math.hypot(vx, vy, vz) >= 115.0);
+        if (!skipTumble) {
+          strikeTumbleDur = STRIKE_TUMBLE_DUR;
+          strikeTumbleTimer = strikeTumbleDur;
+          doingFlip = true;
+          flipAngle = 0.0;
+        } else {
+          strikeTumbleTimer = 0.0;
+        }
+        if (rushSpec) {
+          justChainElapsed = 0.0;
+          justChainLastTarget = e;
+        } else {
+          justChainElapsed = -1.0;
+          justChainLastTarget = null;
         }
 
         // 체공 예열 / 낙하 운동량 스택 후처리 (Lv.3 각성 50% 유지 및 핀볼 Lv.2+ 체공 유지)
@@ -1240,7 +1336,7 @@ function updateCombat(dt, oldX, oldY, oldZ, bList, totalSpeed) {
     }
   }
 
-  // 적 직선 투사체 처리 (상대 선분 충돌 판정 + STRIKE 전 구간/유예 중 자동 DEFLECT)
+  // 적 직선 투사체 처리 (상대 선분 충돌 판정 + 고속(SPD 95+) RUSH / 저스트 패링 시에만 자동 DEFLECT)
   for (let i = projectiles.length - 1; i >= 0; i--) {
     const pr = projectiles[i];
     const oldPrX = pr.x, oldPrY = pr.y, oldPrZ = pr.z;
@@ -1252,9 +1348,9 @@ function updateCombat(dt, oldX, oldY, oldZ, bList, totalSpeed) {
     const relNewX = px - pr.x,     relNewY = py - pr.y,     relNewZ = pz - pr.z;
     const d = pointToSegmentDist3D(0, 0, 0, relOldX, relOldY, relOldZ, relNewX, relNewY, relNewZ);
 
-    const checkR = isStrikeProtected ? 12.5 : 6.8;
+    const checkR = canDeflectProj ? 12.5 : 6.8;
     if (d < checkR) {
-      if (isStrikeProtected) {
+      if (canDeflectProj) {
         addStylePoints(10, 3.8);
         spawnSparks(pr.x, pr.y, pr.z, PAL.NEON_CYAN, 10, 32);
         addPopup('DEFLECT!', PAL.NEON_CYAN, 1);

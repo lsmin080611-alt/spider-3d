@@ -347,7 +347,7 @@ function updateBossSystem(dt, bList, oldX, oldY, oldZ, isStrikeProtected) {
         if (eShock) triggerShockwave(m.x, m.y, m.z, eShock.radius, eShock.dmg, PAL.EMERALD, null, 0);
         m.respawnTimer = 4.0;
         addPopup('MINE BOUNCE!!', PAL.EMERALD, 2);
-      } else if (!isStrikeProtected && invulnTimer <= 0) {
+      } else if (invulnTimer <= 0) {
         const nx = px - m.x, nz = pz - m.z;
         const nl = Math.hypot(nx, nz) || 1.0;
         vx = (nx / nl) * 34.0;
@@ -375,7 +375,7 @@ function updateBossSystem(dt, bList, oldX, oldY, oldZ, isStrikeProtected) {
       bossPulseCd = bossStage >= 2 ? 3.8 : 4.8;
       shockwaves.push({ x: b.x, y: b.y, z: b.z, r: 8, maxR: 62, life: 0.36, maxLife: 0.36, col: PAL.CRIMSON });
       shakeMag = Math.max(shakeMag, 4.2);
-      if (distToP < 58.0 && !isStrikeProtected && invulnTimer <= 0) {
+      if (distToP < 58.0 && invulnTimer <= 0) {
         const nl = Math.hypot(dxP, dzP) || 1.0;
         vx = (dxP / nl) * 48.0;
         vz = (dzP / nl) * 48.0;
@@ -415,7 +415,7 @@ function updateBossSystem(dt, bList, oldX, oldY, oldZ, isStrikeProtected) {
     const by2 = b.y + (bossLaserTy - b.y) * 2.2;
     const bz2 = b.z + (bossLaserTz - b.z) * 2.2;
     const dBeam = pointToSegmentDist3D(px, py, pz, bx1, by1, bz1, bx2, by2, bz2);
-    if (dBeam < 10.5 && invulnTimer <= 0 && !isStrikeProtected) {
+    if (dBeam < 10.5 && invulnTimer <= 0) {
       takeDamage(18, 'SOLAR BEAM!');
     }
     if (bossLaserTimer <= 0) {

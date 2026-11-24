@@ -96,9 +96,9 @@ const AUGMENTS = [
   {
     id: 'strike_rush', tag: '변환', name: '연속 돌격', col: '#38bdf8',
     levels: [
-      ['2.8s 연타 +15%(4x)', '타격후 속도85%보존', '핀볼 연쇄도 누적'],
-      ['연타당 +25% (6x)', '속도 95% 보존', '연타중 광각 락온'],
-      ['연타당 +35% (8x)', '★속도 105% 가속', '★쿨 절반+4x 치명']
+      ['저스트 리듬 +12%(4x)', '텀블링 캔슬·타겟+15%', '속도85%보존·패링'],
+      ['저스트 리듬 +18%(6x)', '속도 95% 보존', '연타중 광각 락온'],
+      ['저스트 리듬 +24%(8x)', '★속도 105% 가속', '★쿨 절반+4x 치명']
     ]
   },
   {
@@ -315,13 +315,13 @@ function getLassoSpec() {
   return { maxTied: 8, radius: 58.0, detonatePer: 48, hitMultPer: 0.16, awakenCount: 4 };
 }
 
-// 연속 돌격 레벨별 연타/속도보존 사양
+// 연속 돌격 레벨별 저스트 리듬/속도보존 사양
 function getStrikeRushSpec() {
   const lv = getLv('strike_rush');
   if (lv <= 0) return null;
-  if (lv === 1) return { maxStack: 4, dmgPerStack: 0.15, keepSpdRatio: 0.85, cdMult: 1.0, critAt: 99 };
-  if (lv === 2) return { maxStack: 6, dmgPerStack: 0.25, keepSpdRatio: 0.95, cdMult: 0.85, critAt: 99 };
-  return { maxStack: 8, dmgPerStack: 0.35, keepSpdRatio: 1.05, cdMult: 0.50, critAt: 4 };
+  if (lv === 1) return { maxStack: 4, dmgPerStack: 0.12, keepSpdRatio: 0.85, cdMult: 1.0, critAt: 99 };
+  if (lv === 2) return { maxStack: 6, dmgPerStack: 0.18, keepSpdRatio: 0.95, cdMult: 0.85, critAt: 99 };
+  return { maxStack: 8, dmgPerStack: 0.24, keepSpdRatio: 1.05, cdMult: 0.50, critAt: 4 };
 }
 
 // 체공 예열 레벨별 단일 극딜 사양 (광역 충격파 제거)

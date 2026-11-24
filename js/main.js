@@ -96,11 +96,22 @@ function tick(now) {
       strikeRushTimer = Math.max(0, strikeRushTimer - dt);
       if (strikeRushTimer <= 0) strikeRushStack = 0;
     }
+    if (!apexActive && justChainElapsed >= 0.0) {
+      justChainElapsed += dt;
+      if (justChainElapsed > JUST_CHAIN_WINDOW_END) justChainElapsed = -1.0;
+    }
+    if (justChainParryTimer > 0) justChainParryTimer = Math.max(0, justChainParryTimer - dt);
+    if (justChainFlashTimer > 0) justChainFlashTimer = Math.max(0, justChainFlashTimer - dt);
     if (swingReattachCooldown > 0) swingReattachCooldown = Math.max(0, swingReattachCooldown - dt);
     if (swingWebShootTimer > 0) swingWebShootTimer = Math.max(0, swingWebShootTimer - dt);
     if (perfectGraceTimer > 0) perfectGraceTimer = Math.max(0, perfectGraceTimer - dt);
-    if (getLv('overdrive') >= 3 && Math.hypot(vx, vy, vz) >= 115.0 && strikeCooldown > 0) {
-      strikeCooldown = 0;
+    if (getLv('overdrive') >= 3 && Math.hypot(vx, vy, vz) >= 115.0) {
+      if (strikeCooldown > 0) strikeCooldown = 0;
+      if (strikeTumbleTimer > 0) {
+        strikeTumbleTimer = 0.0;
+        doingFlip = false;
+        flipAngle = 0.0;
+      }
     }
 
     const airSpecTick = getAirHeatSpec();
@@ -143,7 +154,7 @@ function tick(now) {
 
     if (strikeTarget && enemies.indexOf(strikeTarget) === -1) {
       clearStrikeState();
-      strikeGraceTimer = Math.max(strikeGraceTimer, 0.35);
+      strikeGraceTimer = Math.max(strikeGraceTimer, 0.20);
     }
     const previewCaseNow = strikeMode !== 0 ? strikeMode : classifyStrikeCase();
     homingTarget = strikeTarget || (previewCaseNow === 1 ? findCase1Target() : findBestLockTarget());
@@ -156,7 +167,7 @@ function tick(now) {
       strikeTimer -= dt;
       if (strikeTimer <= 0) {
         clearStrikeState();
-        strikeGraceTimer = Math.max(strikeGraceTimer, 0.35);
+        strikeGraceTimer = Math.max(strikeGraceTimer, 0.20);
       } else if (strikeMode === 1) {
         vy -= (BASE_GRAVITY * 1.20 * aug.gravityMult) * dt;
         isDiving = true;
@@ -184,7 +195,7 @@ function tick(now) {
       } else if (strikeMode === 3) {
         if (!strikeTarget) {
           clearStrikeState();
-          strikeGraceTimer = Math.max(strikeGraceTimer, 0.35);
+          strikeGraceTimer = Math.max(strikeGraceTimer, 0.20);
         } else if (strikePhase === 'HANG_SHOOT') {
           vx *= Math.max(0, 1.0 - 12.0 * dt);
           vy *= Math.max(0, 1.0 - 12.0 * dt);
@@ -461,7 +472,13 @@ function tick(now) {
         }
       }
 
-      if (doingFlip) {
+      if (strikeTumbleTimer > 0) {
+        strikeTumbleTimer = Math.max(0.0, strikeTumbleTimer - dt);
+        const prog = 1.0 - (strikeTumbleTimer / Math.max(0.1, strikeTumbleDur));
+        flipAngle = prog * Math.PI * 4.0;
+        doingFlip = strikeTumbleTimer > 0;
+        if (!doingFlip) flipAngle = 0.0;
+      } else if (doingFlip) {
         flipAngle += 7.5 * dt;
         if (flipAngle >= Math.PI * 2) { flipAngle = 0.0; doingFlip = false; }
       }
@@ -524,6 +541,10 @@ function tick(now) {
     if (py < 2.5) {
       py = 2.5;
       doingFlip = false;
+      flipAngle = 0.0;
+      strikeTumbleTimer = 0.0;
+      justChainElapsed = -1.0;
+      justChainLastTarget = null;
       isDiving = false;
       isGliding = false;
       diveCharge = 0;
@@ -549,7 +570,7 @@ function tick(now) {
         const slamDmg = 36 + Math.round(Math.min(50, Math.abs(vy) * 0.45));
         triggerShockwave(px, 3.0, pz, 55.0, slamDmg, PAL.ORANGE);
         clearStrikeState();
-        strikeGraceTimer = Math.max(strikeGraceTimer, 0.50);
+        strikeGraceTimer = Math.max(strikeGraceTimer, 0.25);
         airTimeStack = 0.0;
         vx *= 0.65; vz *= 0.65; vy = 26.0;
         spawnSparks(px, 1.5, pz, PAL.ORANGE, 14, 34);

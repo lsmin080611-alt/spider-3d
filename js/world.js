@@ -271,6 +271,9 @@ function resetGame() {
   homingTarget = null;
   clearStrikeState();
   strikeEntrySpd = 0; strikeEntryDist = 0; strikeMotionIdx = 0; strikeCamBlend = 0; strikeCooldown = 0; strikeGraceTimer = 0;
+  strikeTumbleTimer = 0; strikeTumbleDur = STRIKE_TUMBLE_DUR;
+  justChainElapsed = -1.0; justChainLastTarget = null; justChainTargetMult = 1.0;
+  justChainParryTimer = 0.0; justChainFlashTimer = 0.0; strikeIsJustChain = false;
   skimTechTimer = 0;
   auraTickTimer = 0; webZapTimer = 0; multiKillCount = 0; multiKillWindow = 0;
   afterimageTimer = 0; afterimages = [];

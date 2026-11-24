@@ -48,7 +48,19 @@ let strikeMotionIdx = 0;
 let strikeCamSide = 1;
 let strikeCamBlend = 0;
 let strikeCooldown = 0;
-let strikeGraceTimer = 0; // 공격 직후 반동/관통 이탈 중 몸체 충돌 & 투사체 피격 방지 유예 시간
+let strikeGraceTimer = 0; // 공격 직후 반동/관통 이탈 중 몸체 충돌 방지 짧은 유예 시간 (0.20s)
+const STRIKE_TUMBLE_DUR = 1.35; // 타격 후 공중 2회전 텀블링 리커버리 시간 (STRIKE 불가, 이동·스윙 가능)
+let strikeTumbleTimer = 0;
+let strikeTumbleDur = STRIKE_TUMBLE_DUR;
+const JUST_CHAIN_MIN = 0.20;
+const JUST_CHAIN_MAX = 0.46;
+const JUST_CHAIN_WINDOW_END = 0.56;
+let justChainElapsed = -1.0;    // >= 0: 연속 돌격 저스트 리듬 창 경과 시간
+let justChainLastTarget = null; // 직전 타격 표적 (타겟 전환 +15% / 동일 표적 -25% 판정)
+let justChainTargetMult = 1.0;  // 현재 STRIKE에 적용되는 타겟 전환/동일 보정 배율
+let justChainParryTimer = 0.0;  // JUST CHAIN 성공 시 짧은 투사체 패링 유예 (0.18s)
+let justChainFlashTimer = 0.0;  // JUST CHAIN 성공 HUD 링 플래시 타이머
+let strikeIsJustChain = false;  // 현재 STRIKE가 저스트 리듬 체인으로 발동됐는지 여부
 let skimTechTimer = 0;    // 벽/바닥 스침·월슬라이드 직후 기술 보너스 유지 타이머
 let chainBouncesLeft = 0;
 let chainVisited = [];
@@ -364,6 +376,8 @@ function clearStrikeState() {
   chainBouncesLeft = 0;
   chainVisited = [];
   isChainRush = false;
+  strikeIsJustChain = false;
+  justChainTargetMult = 1.0;
 }
 
 function releaseLassoTargets(reasonText = '') {
@@ -383,6 +397,10 @@ function takeDamage(amount, reasonText) {
   if (strikeMode === 0) releaseLassoTargets('LASSO BROKEN!');
   clearStrikeState();
   strikeGraceTimer = 0;
+  strikeTumbleTimer = 0;
+  justChainElapsed = -1.0;
+  justChainLastTarget = null;
+  justChainParryTimer = 0.0;
   dropStyleRanks(2, reasonText + ' -' + amount + 'HP', PAL.CRIMSON);
   if (hp <= 0) {
     gameOver = true;

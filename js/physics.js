@@ -129,6 +129,10 @@ function startWebSwing(bList, cList, fromGroundLaunch = false) {
   swingWebShootTimer = 0.05;
   isRopeTaut = false;
   doingFlip = false;
+  flipAngle = 0.0;
+  strikeTumbleTimer = 0.0;
+  justChainElapsed = -1.0;
+  justChainLastTarget = null;
   spawnSparks(ax, ay, az, target.isCloud ? '#b8e4ff' : '#ffffff', 7, 22);
   if (typeof playSfx === 'function') playSfx('web_shoot');
   if (wasOpeningDropCatch) {
@@ -365,6 +369,9 @@ function handleBuildingsCollisionAndProximity(bList) {
               isRopeTaut = false;
               swingReattachCooldown = 0.18;
               clearStrikeState();
+              strikeTumbleTimer = 0.0;
+              doingFlip = false;
+              flipAngle = 0.0;
               if (getLv('fric_heat') > 0) frictionCharge = Math.min(1.5, frictionCharge + 0.55);
               if (lvElastic >= 3) elasticCritTimer = 2.5;
               lastElasticWallPt = { x: px, y: py, z: pz, nx: nx, nz: nz };
