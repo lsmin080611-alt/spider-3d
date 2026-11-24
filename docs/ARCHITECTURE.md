@@ -74,4 +74,6 @@
   - [x] Track 2: 스윙 줄당김 상승(+25~30%) · 활강 상승 버그 수정 · 저고도 고속 스윙 (#3, #4, #6)
   - [x] Track 3: C1 적중직전/C2·C3 Shift직전 속도 기준 · 2회전 텀블링 리커버리 & 무적 차단 · `연속 돌격` 저스트 리듬 리워크 (#7, #10, #11; #9는 추후 스타일 랭크 통합으로 이관)
   - [x] Track 4: 속도 비례 벽/바닥(추락사) · 적/보스 데미지 상향 & 회복 절반 하향 · 보스 독립 아레나 순항 AI & 3D 텔레그래프 4종 패턴(`SOLAR SWEEP`/`ORBITAL LOCK-ON`/`SKY RING`/`REPULSOR DOME`) (#5, #8)
-- [ ] LILYGO T-Display-S3 (PlatformIO + `TFT_eSPI`) C++ 포팅 및 실기기 60fps 검증
+- [x] LILYGO T-Display-S3 C++ 포팅 **Phase 1** (`firmware/` — PlatformIO + `TFT_eSPI` 8-bit 병렬 ST7789 320×170, `include/pins.h`, `include/types.h`, `src/input.cpp` 조이스틱 ADC1+4버튼, `src/audio_hw.cpp` `ledcWriteTone` 부저, `src/world.cpp` 맨해튼 도시, `src/physics.cpp` 3D 진자 웹 스윙+바닥 방어, `src/renderer.cpp` 108.8KB SRAM 단일 스프라이트 3D 렌더러+HW 진단 HUD — `pio run` 빌드 통과: RAM 8.0%, Flash 4.9%)
+- [ ] LILYGO T-Display-S3 C++ 포팅 **Phase 2** (3-Case 수동 STRIKE, 적 3티어 AI, 4슬롯 증강 드래프트, 스타일 랭크)
+- [ ] LILYGO T-Display-S3 C++ 포팅 **Phase 3** (6분 보스전 `OMEGA SOVEREIGN`, 옥상 5-Cut 오프닝, Lv.3 `APEX CUT` 및 풀 사운드)
