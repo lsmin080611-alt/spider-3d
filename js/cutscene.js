@@ -639,7 +639,7 @@ function tryTriggerApexCut(augId, payload, forceTest = false) {
     act3Roll = 0.11;
     act3Fov = 146.0;
   } else if (augId === 'lasso_swing') {
-    // #4 올가미 스윙: Act 1 양손 결박 초근접 컷인 -> Act 2 115° 3D 거미줄 구체망 오빗 -> Act 3 0.60s 압착 + 0.90s 대파열
+    // #4 올가미 스윙: Act 1 양손 결박 초근접 컷인 -> Act 2 115° 오빗 + 1.95x 사방 화면 밖 확장·쪼기 -> Act 3 0.22s 초고속 폭축 + 반동 줌아웃 대파열
     const lPts = (data.lassoPts && data.lassoPts.length > 0) ? data.lassoPts : [];
     act1Look = { x: px, y: py + 0.4, z: pz };
     act1Ang = camYaw + 0.48;
@@ -651,24 +651,27 @@ function tryTriggerApexCut(augId, payload, forceTest = false) {
       sx += lPts[i].x; sy += lPts[i].y; sz += lPts[i].z;
     }
     const cnt = 1 + lPts.length;
-    apexAnchorX = (sx / cnt) * 0.55 + targetPt.x * 0.45;
-    apexAnchorY = Math.max(8.0, (sy / cnt) * 0.55 + targetPt.y * 0.45);
-    apexAnchorZ = (sz / cnt) * 0.55 + targetPt.z * 0.45;
+    apexAnchorX = (sx / cnt) * 0.50 + targetPt.x * 0.50;
+    apexAnchorY = Math.max(8.0, (sy / cnt) * 0.50 + targetPt.y * 0.50);
+    apexAnchorZ = (sz / cnt) * 0.50 + targetPt.z * 0.50;
     startAng = camYaw + Math.PI * 0.64;
     rawArc = 2.00; // ~115°
-    r0 = 25.0; r1 = 19.0; e0 = 7.0; e1 = 3.0;
-    roll = 0.14;
-    freezeFov = 182.0; releaseFov = 110.0;
+    r0 = 23.0; r1 = 17.5; e0 = 6.5; e1 = 2.5;
+    roll = 0.15;
+    freezeFov = 178.0; releaseFov = 108.0;
     extras.lassoPts = lPts;
+    extras.lassoExpand = 1.0;
+    extras.lassoPullDur = 0.22; // 0.22s 초고속 탄성 폭축!
     extras.lassoBurstDone = false;
+    extras.nextTensionSparkT = 0.0;
 
     act3Look = { x: targetPt.x, y: targetPt.y, z: targetPt.z };
     act3Ang = startAng + rawArc + 0.65;
-    act3Dist = 40.0;
-    act3Elev = 10.0;
+    act3Dist = 24.0; // 폭축 중 근접 와이드 -> 파열 순간 35m 반동 줌아웃
+    act3Elev = 7.5;
     act3DriftAng = 0.22;
-    act3Roll = -0.10;
-    act3Fov = 148.0;
+    act3Roll = -0.11;
+    act3Fov = 152.0;
   } else if (augId === 'chain_pinball') {
     // #5 연쇄 핀볼: Act 1 6타 지점 초근접 컷인 -> Act 2 105° 30m 상공 부감 오빗 -> Act 3 1->6 순차 번개 릴레이 + 피날레
     const cPts = (data.chainPts && data.chainPts.length >= 2) ? data.chainPts : [
@@ -715,65 +718,72 @@ function tryTriggerApexCut(augId, payload, forceTest = false) {
     act3Roll = 0.12;
     act3Fov = 146.0;
   } else if (augId === 'elastic') {
-    // #6 탄성 반발 (벽 0%, 줄 붙이는 근접 컷신 0%):
-    // Act 1 1차 공중 충돌 직후 즉시 양방향 빠른 튕김 -> Act 2 105° 오빗 + 탄성 한계 "쪼기" -> Act 3 "팡!" 릴리즈 초고속 수축 + 2차 공중 정면 대충돌!
-    const midPt = { x: px, y: Math.max(12.0, py), z: pz };
+    // #6 탄성 반발 (벽 0%, 80m 화면 밖 스케일 + 어깨 너머 초원근 구도):
+    // Act 1-A(0.00~0.42s) 1차 공중 충돌 각인 -> Act 1-B(0.42~0.90s) ±33m 폭발 튕김 발사 -> Act 2(0.90~2.35s) ±40m(총 80m) 화면 밖 한계 쪼기 오빗 -> Act 3(2.35~3.85s) 0.18s 미사일 수축 2차 정면 대충돌!
+    const midPt = { x: px, y: Math.max(14.0, py), z: pz };
     let rdx = px - targetPt.x;
-    let rdy = (py - targetPt.y) * 0.25;
+    let rdy = (py - targetPt.y) * 0.22;
     let rdz = pz - targetPt.z;
     const rLen = Math.hypot(rdx, rdy, rdz);
     if (rLen > 1.5) {
-      rdx /= rLen; rdy = Math.max(-0.18, Math.min(0.18, rdy / rLen)); rdz /= rLen;
+      rdx /= rLen; rdy = Math.max(-0.15, Math.min(0.15, rdy / rLen)); rdz /= rLen;
     } else {
       rdx = rightX * 0.82 - sinY * 0.56;
-      rdy = 0.12;
+      rdy = 0.10;
       rdz = rightZ * 0.82 - cosY * 0.56;
     }
     const rn = Math.hypot(rdx, rdy, rdz) || 1.0;
     rdx /= rn; rdy /= rn; rdz /= rn;
 
-    // 반발 축에 수직인 측면 방향 (양쪽 튕겨나가는 스파이더맨과 적 + 늘어나는 탄성줄이 화면 가로로 시원하게 펼쳐짐)
+    // 반발 축 및 수직 측면 단위벡터 (어깨 너머 초원근 대각 구도용)
     const axisAng = Math.atan2(rdx, rdz);
-    const sideAng = axisAng + Math.PI * 0.5;
+    const sideLen = Math.hypot(rdx, rdz) || 1.0;
+    const sideX = -rdz / sideLen;
+    const sideZ = rdx / sideLen;
 
-    // Act 1: 근접 컷신 없이 바로 중거리 측면에서 살짝 줌아웃하며 1차 충돌 직후 빠른 튕김 전체를 포착!
+    // Act 1-A (0.00~0.42s): 중앙 1차 충돌 근접 샷 (10.5m -> 9.4m 줌인, 스파이더맨과 적이 바로 눈앞에서 맞부딪힌 순간을 선명히 각인!)
     act1Look = { x: midPt.x, y: midPt.y, z: midPt.z };
-    act1Ang = sideAng - 0.18;
-    act1Dist0 = 19.5; act1Dist1 = 25.5; act1Elev = 2.2; act1Drift = 0.18; act1Roll = 0.16;
-    act1Fov0 = 186.0; act1Fov1 = 172.0;
+    act1Ang = axisAng + 0.92;
+    act1Dist0 = 10.5; act1Dist1 = 9.4; act1Elev = 1.2; act1Drift = 0.14; act1Roll = 0.22;
+    act1Fov0 = 204.0; act1Fov1 = 218.0;
 
     apexAnchorX = midPt.x;
     apexAnchorY = midPt.y;
     apexAnchorZ = midPt.z;
-    startAng = sideAng + 0.05;
-    rawArc = 1.84; // ~105° 한계 쪼기 오빗
-    r0 = 26.5; r1 = 21.5; e0 = 2.8; e1 = 1.2;
-    roll = 0.14;
-    freezeFov = 178.0; releaseFov = 106.0;
+    startAng = axisAng + 0.52; // 스파이더맨 어깨 너머 대각선(~30°)에서 시작!
+    rawArc = 1.84; // ~105° 탄성줄 따라 훑는 초원근 오빗
+    r0 = 13.5; r1 = 16.5; e0 = 2.0; e1 = 0.6;
+    roll = 0.16;
+    freezeFov = 148.0; releaseFov = 104.0;
 
     extras.midPt = midPt;
     extras.recoilDir = { x: rdx, y: rdy, z: rdz };
-    extras.maxSep = 15.5; // 양측 합계 31m까지 팽팽하게 늘어남
-    extras.elasticStretch = 0.0;
-    extras.enemyVisPt = { x: midPt.x, y: midPt.y, z: midPt.z };
+    extras.sideVec = { x: sideX, z: sideZ };
+    extras.axisAng = axisAng;
+    extras.maxSep = 40.0;          // 양측 합계 80m! 화면 밖 저 멀리까지 찢어질 듯 늘어나는 초대형 스케일
+    extras.clash1Dur = 0.42;       // 0.00~0.42s: 1차 충돌 확실한 각인
+    extras.recoilLaunchDone = false;
+    extras.elasticStretch = 0.04;  // 1차 충돌 맞부딪힘 간격
+    extras.enemyVisPt = { x: midPt.x - rdx * 1.6, y: midPt.y, z: midPt.z - rdz * 1.6 };
     extras.recoilGhostCount = 0;
     extras.snapGhostCount = 0;
     extras.clash2Done = false;
-    extras.clash2Time = 0.38; // Act 3 시작 후 0.38s에 2차 공중 정면 대충돌
+    extras.clash2Time = 0.18;      // Act 3 시작 후 단 0.18초 만에 화면 밖에서 미사일처럼 빨려 들어와 2차 대충돌!
     extras.nextTensionSparkT = 0.0;
 
-    // 1차 충돌 즉시 스파크 분출
-    spawnSparks(midPt.x, midPt.y, midPt.z, PAL.EMERALD, 16, 48);
-    shakeMag = Math.max(shakeMag, 4.4);
+    // 1차 충돌 즉시 강렬한 스파크 & 쉐이크
+    spawnSparks(midPt.x, midPt.y, midPt.z, PAL.EMERALD, 20, 56);
+    spawnSparks(midPt.x, midPt.y, midPt.z, '#ffffff', 12, 42);
+    shakeMag = Math.max(shakeMag, 5.8);
 
-    // Act 3: 대조 측면 매치 컷에서 수축 → 2차 공중 정면 대충돌 포착
+    // Act 3: 중앙 충돌점 기준 낮은 대각 광각 앵글 (17.5m -> 충돌 시 24m 반동 줌아웃!)
     act3Look = { x: midPt.x, y: midPt.y, z: midPt.z };
-    act3Ang = sideAng - 0.25;
-    act3Dist = 28.5;
-    act3Elev = 3.2;
-    act3DriftAng = -0.22;
-    act3Roll = -0.15;
-    act3Fov = 158.0;
+    act3Ang = axisAng + 0.68; // 반발축 ~39° 대각선 — 양끝(±40m)이 화면 좌우 바깥에서 중앙으로 맹렬히 돌진!
+    act3Dist = 17.5;
+    act3Elev = 2.2;
+    act3DriftAng = -0.20;
+    act3Roll = -0.16;
+    act3Fov = 142.0;
   }
 
   // Act 1 안전 카메라 사전 계산
@@ -907,29 +917,80 @@ function updateApexCutFreeze(rawDt) {
   apexTimer += rawDt;
   if (apexFlashTimer > 0.0) apexFlashTimer = Math.max(0.0, apexFlashTimer - rawDt);
 
-  // === Act 1 (0.00~0.90s): [기] 0% 정지 · 초근접 망원 포즈 컷인 (#6 탄성 반발은 즉시 빠른 공중 튕김) ===
+  // === Act 1 (0.00~0.90s): [기] 0% 정지 · 초근접 망원 포즈 컷인 (#6 탄성 반발은 0.42s 1차 충돌 각인 -> 0.48s 폭발적 양방향 튕김) ===
   if (apexTimer < APEX_ACT1_DUR) {
     const p1 = Math.max(0.0, Math.min(1.0, apexTimer / APEX_ACT1_DUR));
     const u1 = 1.0 - Math.pow(1.0 - p1, 2.2);
 
-    // #6 탄성 반발: 근접 컷신 없이 1차 충돌 직후 즉시 양방향 빠른 튕김 (0 -> 0.78 fast cubic ease-out)
+    // #6 탄성 반발 전용 2단 Act 1: Act 1-A(0.00~0.42s 1차 공중 충돌 각인) -> Act 1-B(0.42~0.90s 어깨 너머 대각 추적 + ±33m 폭발 튕김!)
     if (apexId === 'elastic' && apexSceneExtras) {
-      const rProg = Math.max(0.0, Math.min(1.0, (apexTimer - 0.04) / (APEX_ACT1_DUR - 0.04)));
-      const stretch = 0.78 * (1.0 - Math.pow(1.0 - rProg, 3.0));
-      syncElasticVisualPositions(stretch);
-      if (apexSceneExtras.recoilGhostCount === 0 && rProg >= 0.14) {
-        apexSceneExtras.recoilGhostCount = 1;
-        afterimages.push({
-          x: px + apexPlayerDrawOff.x, y: py + apexPlayerDrawOff.y, z: pz + apexPlayerDrawOff.z,
-          poseKey: 'APEX_RICOCHET', rot: 0, tone: 0, life: 1.6
-        });
-      } else if (apexSceneExtras.recoilGhostCount === 1 && rProg >= 0.36) {
-        apexSceneExtras.recoilGhostCount = 2;
-        afterimages.push({
-          x: px + apexPlayerDrawOff.x, y: py + apexPlayerDrawOff.y, z: pz + apexPlayerDrawOff.z,
-          poseKey: 'APEX_RICOCHET', rot: 0, tone: 1, life: 1.6
-        });
+      const c1Dur = apexSceneExtras.clash1Dur || 0.42;
+      const mp = apexSceneExtras.midPt || { x: px, y: py, z: pz };
+      const rd = apexSceneExtras.recoilDir || { x: 1, y: 0, z: 0 };
+      const sv = apexSceneExtras.sideVec || { x: 0, z: 1 };
+
+      if (apexTimer < c1Dur) {
+        // Act 1-A: 1차 충돌 근접 샷 (스파이더맨과 적이 중앙에서 맞부딪힌 임팩트 순간을 확실히 각인!)
+        const p1a = Math.max(0.0, Math.min(1.0, apexTimer / c1Dur));
+        syncElasticVisualPositions(0.04);
+        if (apexAct1Cam) {
+          apexCamX = apexAct1Cam.x + (apexAct1Cam.endX - apexAct1Cam.x) * p1a;
+          apexCamY = apexAct1Cam.y + (apexAct1Cam.endY - apexAct1Cam.y) * p1a;
+          apexCamZ = apexAct1Cam.z + (apexAct1Cam.endZ - apexAct1Cam.z) * p1a;
+          const dx = apexAct1Cam.lookX - apexCamX;
+          const dy = apexAct1Cam.lookY - apexCamY;
+          const dz = apexAct1Cam.lookZ - apexCamZ;
+          camLagYaw = Math.atan2(dx, dz);
+          camPitch = Math.max(-1.05, Math.min(0.85, Math.atan2(dy, Math.hypot(dx, dz) || 1.0)));
+          camRoll = apexAct1Cam.roll;
+          fovD = apexAct1Cam.fov0 + (apexAct1Cam.fov1 - apexAct1Cam.fov0) * p1a;
+        }
+      } else {
+        // Act 1-B: 0.42s 폭발적 반발 발사 트리거 (1회)
+        if (!apexSceneExtras.recoilLaunchDone) {
+          apexSceneExtras.recoilLaunchDone = true;
+          apexFlashTimer = 0.04;
+          shakeMag = Math.max(shakeMag, 5.4);
+          if (typeof playSfx === 'function') playSfx('apex_pinball_hit', 1.15);
+          spawnSparks(mp.x, mp.y, mp.z, PAL.EMERALD, 22, 66);
+          spawnSparks(mp.x, mp.y, mp.z, '#ffffff', 14, 52);
+        }
+        // 단 0.44초 만에 0.04 -> 0.82 (±32.8m, 총 65.6m!) 폭발 가속 튕김!
+        const rProg = Math.max(0.0, Math.min(1.0, (apexTimer - c1Dur) / 0.44));
+        const stretch = 0.04 + 0.78 * (1.0 - Math.pow(1.0 - rProg, 3.2));
+        syncElasticVisualPositions(stretch);
+
+        // 폭발 반발 고속 잔상 4체 박제
+        const ghostMarks = [0.10, 0.24, 0.42, 0.65];
+        while (apexSceneExtras.recoilGhostCount < ghostMarks.length && rProg >= ghostMarks[apexSceneExtras.recoilGhostCount]) {
+          const idxG = apexSceneExtras.recoilGhostCount;
+          apexSceneExtras.recoilGhostCount++;
+          afterimages.push({
+            x: px + apexPlayerDrawOff.x, y: py + apexPlayerDrawOff.y, z: pz + apexPlayerDrawOff.z,
+            poseKey: 'APEX_RICOCHET', rot: 0, tone: (idxG & 1), life: 1.9
+          });
+        }
+
+        // 스파이더맨 뒤쪽 어깨 너머 대각 추적 구도 (~12.3m, 반발축 ~32°):
+        // 스파이더맨은 화면 전경에 박히고 적은 눈앞에서 화면 밖 저 멀리까지 튕겨 날아가는 극단적 3D 원근 체감!
+        const pVisX = px + apexPlayerDrawOff.x;
+        const pVisY = py + apexPlayerDrawOff.y;
+        const pVisZ = pz + apexPlayerDrawOff.z;
+        apexCamX = pVisX + rd.x * 10.5 + sv.x * 6.6;
+        apexCamY = Math.max(5.0, pVisY + 2.2);
+        apexCamZ = pVisZ + rd.z * 10.5 + sv.z * 6.6;
+        const lx = pVisX * 0.42 + mp.x * 0.58;
+        const ly = pVisY * 0.48 + mp.y * 0.52;
+        const lz = pVisZ * 0.42 + mp.z * 0.58;
+        const dx = lx - apexCamX, dy = ly - apexCamY, dz = lz - apexCamZ;
+        camLagYaw = Math.atan2(dx, dz);
+        camPitch = Math.max(-1.05, Math.min(0.85, Math.atan2(dy, Math.hypot(dx, dz) || 1.0)));
+        camRoll = -0.18;
+        fovD = 152.0 - rProg * 28.0; // 광각으로 확 열리며 폭발적 원근감 강조!
       }
+      apexCamBlend = 1.0;
+      apexLetterbox = Math.min(1.0, apexTimer / 0.09);
+      return true;
     }
 
     if (apexAct1Cam) {
@@ -959,44 +1020,79 @@ function updateApexCutFreeze(rawDt) {
   // === Act 2 (0.90~2.35s): [승] 0% 정지 · 95°~115° 3D 불릿타임 오빗 (총 2.35s 정지) ===
   if (apexTimer < APEX_ACT2_DUR) {
     const act2Dur = Math.max(0.05, APEX_ACT2_DUR - APEX_ACT1_DUR);
-    const p2 = Math.max(0.0, Math.min(1.0, (apexTimer - APEX_ACT1_DUR) / act2Dur));
+    const elapsed2 = apexTimer - APEX_ACT1_DUR;
+    const p2 = Math.max(0.0, Math.min(1.0, elapsed2 / act2Dur));
     const u2 = 1.0 - Math.pow(1.0 - p2, 1.85);
     const curAng = apexStartAng + apexOrbitArc * u2;
     let curRad = apexOrbitRadius + (apexOrbitRadiusEnd - apexOrbitRadius) * u2;
     const curElev = apexStartElev + (apexEndElev - apexStartElev) * u2;
 
-    // #6 탄성 반발: Act 2 앞 1.20s 동안 0.78 -> 1.00 한계까지 팽팽하게 쥐어짜고, 마지막 0.25s는 한계 정지 홀드("쪼기"!)
     let extraFov = 0.0;
-    if (apexId === 'elastic' && apexSceneExtras) {
-      const elapsed2 = apexTimer - APEX_ACT1_DUR;
-      const stretchProg = Math.max(0.0, Math.min(1.0, elapsed2 / 1.20));
-      const stretch = 0.78 + 0.22 * (1.0 - Math.pow(1.0 - stretchProg, 2.0));
-      syncElasticVisualPositions(stretch);
+    let orbitCenterX = apexAnchorX, orbitCenterY = apexAnchorY, orbitCenterZ = apexAnchorZ;
+    let lookTargetX = apexAnchorX, lookTargetY = apexAnchorY, lookTargetZ = apexAnchorZ;
 
-      // 한계 임박(stretch >= 0.94) 시 줌 압박 + 고주파 쉐이크 + 중앙 텐션 스파크 분출
-      if (stretch >= 0.94) {
-        const pressure = Math.min(1.0, (stretch - 0.94) / 0.06);
+    // #4 올가미 스윙: Act 2 동안 포획 거미줄 구체망을 1.0x -> 1.95x(화면 사방 밖까지) 팽팽히 확장 후 마지막 0.25s 한계 쪼기!
+    if (apexId === 'lasso_swing' && apexSceneExtras) {
+      const expProg = Math.max(0.0, Math.min(1.0, elapsed2 / 1.20));
+      const expand = 1.0 + 0.95 * (1.0 - Math.pow(1.0 - expProg, 2.1));
+      apexSceneExtras.lassoExpand = expand;
+      if (expand >= 1.82) {
+        const pressure = Math.min(1.0, (expand - 1.82) / 0.13);
         extraFov = pressure * 18.0;
-        curRad -= pressure * 2.2;
-        shakeMag = Math.max(shakeMag, 1.4 + pressure * 1.4);
+        curRad -= pressure * 2.4;
+        shakeMag = Math.max(shakeMag, 1.2 + pressure * 1.6);
       }
-      if (apexTimer >= apexSceneExtras.nextTensionSparkT && apexSceneExtras.midPt) {
-        apexSceneExtras.nextTensionSparkT = apexTimer + (stretch >= 0.96 ? 0.11 : 0.20);
-        const mp = apexSceneExtras.midPt;
-        const tCol = stretch >= 0.96 ? PAL.CRIMSON : (stretch >= 0.88 ? PAL.GOLD : PAL.EMERALD);
-        spawnSparks(mp.x, mp.y, mp.z, tCol, 4, 24);
+      if (apexTimer >= apexSceneExtras.nextTensionSparkT && apexSceneExtras.targetPt) {
+        apexSceneExtras.nextTensionSparkT = apexTimer + (expand >= 1.86 ? 0.11 : 0.22);
+        const tp = apexSceneExtras.targetPt;
+        spawnSparks(tp.x, tp.y, tp.z, expand >= 1.86 ? PAL.GOLD : '#d8b4fe', 4, 26);
       }
     }
 
-    apexCamX = apexAnchorX + Math.sin(curAng) * curRad;
-    apexCamY = Math.max(4.5, apexAnchorY + curElev);
-    apexCamZ = apexAnchorZ + Math.cos(curAng) * curRad;
+    // #6 탄성 반발: Act 2 앞 1.18s 동안 0.82 -> 1.00 (±40m, 총 80m!) 화면 밖 한계까지 쥐어짜고 마지막 0.27s 정지 홀드("쪼기"!)
+    // 카메라는 스파이더맨(pVis)을 전경에 바짝 두고 어깨 너머에서 탄성줄 소실점을 향해 대각 오빗!
+    if (apexId === 'elastic' && apexSceneExtras) {
+      const stretchProg = Math.max(0.0, Math.min(1.0, elapsed2 / 1.18));
+      const stretch = 0.82 + 0.18 * (1.0 - Math.pow(1.0 - stretchProg, 2.0));
+      syncElasticVisualPositions(stretch);
+
+      const mp = apexSceneExtras.midPt || { x: px, y: py, z: pz };
+      const pVisX = px + apexPlayerDrawOff.x;
+      const pVisY = py + apexPlayerDrawOff.y;
+      const pVisZ = pz + apexPlayerDrawOff.z;
+
+      // 스파이더맨 전경 중심 오빗 + 시선은 스파이더맨 너머 80m 탄성줄이 뻗어나가는 소실점 방향!
+      orbitCenterX = pVisX;
+      orbitCenterY = pVisY;
+      orbitCenterZ = pVisZ;
+      lookTargetX = pVisX * 0.36 + mp.x * 0.64;
+      lookTargetY = pVisY * 0.45 + mp.y * 0.55;
+      lookTargetZ = pVisZ * 0.36 + mp.z * 0.64;
+
+      // 한계 임박(stretch >= 0.94) 시 강한 줌 압박 + 고주파 쉐이크 + 줄 따라 텐션 스파크 분출
+      if (stretch >= 0.94) {
+        const pressure = Math.min(1.0, (stretch - 0.94) / 0.06);
+        extraFov = pressure * 24.0;
+        curRad -= pressure * 2.2;
+        shakeMag = Math.max(shakeMag, 1.8 + pressure * 1.8);
+      }
+      if (apexTimer >= apexSceneExtras.nextTensionSparkT) {
+        apexSceneExtras.nextTensionSparkT = apexTimer + (stretch >= 0.96 ? 0.09 : 0.18);
+        const tCol = stretch >= 0.96 ? PAL.CRIMSON : (stretch >= 0.89 ? PAL.GOLD : PAL.EMERALD);
+        // 줄 앞쪽(스파이더맨-중앙 사이)에서 스파크가 터져 전경 화면에서도 강렬히 체감되도록 배치
+        spawnSparks(pVisX * 0.65 + mp.x * 0.35, pVisY * 0.65 + mp.y * 0.35, pVisZ * 0.65 + mp.z * 0.35, tCol, 5, 28);
+      }
+    }
+
+    apexCamX = orbitCenterX + Math.sin(curAng) * curRad;
+    apexCamY = Math.max(5.0, orbitCenterY + curElev);
+    apexCamZ = orbitCenterZ + Math.cos(curAng) * curRad;
     apexCamBlend = 1.0;
     apexLetterbox = 1.0;
 
-    const dx = apexAnchorX - apexCamX;
-    const dy = apexAnchorY - apexCamY;
-    const dz = apexAnchorZ - apexCamZ;
+    const dx = lookTargetX - apexCamX;
+    const dy = lookTargetY - apexCamY;
+    const dz = lookTargetZ - apexCamZ;
     camLagYaw = Math.atan2(dx, dz);
     camPitch = Math.max(-1.05, Math.min(0.85, Math.atan2(dy, Math.hypot(dx, dz) || 1.0)));
     camRoll += (apexTargetRoll - camRoll) * Math.min(1.0, 9.0 * rawDt);
@@ -1040,14 +1136,11 @@ function updateApexCutFreeze(rawDt) {
       // 1단계 거미줄 스냅 절단
       spawnSparks(px, py, pz, PAL.GOLD, 16, 44);
     } else if (apexId === 'elastic' && apexSceneExtras) {
-      // 1단계 "팡!" 탄성 릴리즈 스냅! (스파이더맨과 적이 중앙을 향해 초고속 수축 개시)
-      shakeMag = Math.max(shakeMag, 5.0);
+      // 1단계 "팡!" 탄성 릴리즈 스냅! (화면 밖 ±40m 양끝에서 중앙으로 0.18s 미사일 수축 개시)
+      shakeMag = Math.max(shakeMag, 5.4);
       const mp = apexSceneExtras.midPt || { x: px, y: py, z: pz };
-      spawnSparks(px + apexPlayerDrawOff.x, py + apexPlayerDrawOff.y, pz + apexPlayerDrawOff.z, PAL.GOLD, 12, 42);
-      if (apexSceneExtras.enemyVisPt) {
-        spawnSparks(apexSceneExtras.enemyVisPt.x, apexSceneExtras.enemyVisPt.y, apexSceneExtras.enemyVisPt.z, PAL.EMERALD, 12, 42);
-      }
-      spawnSparks(mp.x, mp.y, mp.z, '#ffffff', 10, 36);
+      spawnSparks(mp.x, mp.y, mp.z, PAL.GOLD, 14, 48);
+      spawnSparks(mp.x, mp.y, mp.z, '#ffffff', 12, 38);
     } else {
       spawnSparks(tPt.x, tPt.y, tPt.z, accCol, 14, 42);
     }
@@ -1106,17 +1199,49 @@ function applyApexReleaseCamera(rawDt) {
     const p3 = Math.max(0.0, Math.min(1.0, act3Elapsed / act3Dur));
 
     if (apexAct3Cam) {
-      apexCamX = apexAct3Cam.x + (apexAct3Cam.endX - apexAct3Cam.x) * p3;
-      apexCamY = apexAct3Cam.y + (apexAct3Cam.endY - apexAct3Cam.y) * p3;
-      apexCamZ = apexAct3Cam.z + (apexAct3Cam.endZ - apexAct3Cam.z) * p3;
-      const lx = apexAct3Cam.lookX * 0.68 + px * 0.32;
-      const ly = apexAct3Cam.lookY * 0.68 + py * 0.32;
-      const lz = apexAct3Cam.lookZ * 0.68 + pz * 0.32;
+      // #4 올가미 스윙 & #6 탄성 반발: 폭발/2차 대충돌 순간 카메라가 확 뒤로 튕겨나는 반동 줌아웃!
+      let punchScale = 1.0;
+      let extraFovShift = 0.0;
+      if (apexId === 'lasso_swing' && apexSceneExtras) {
+        const pullD = apexSceneExtras.lassoPullDur || 0.22;
+        if (act3Elapsed < pullD) {
+          const uP = act3Elapsed / pullD;
+          punchScale = 1.0 - uP * 0.10; // 폭축 중 살짝 빨려들어감
+          extraFovShift = uP * 12.0;
+        } else {
+          const bP = Math.min(1.0, (act3Elapsed - pullD) / 0.28);
+          const bEase = 1.0 - Math.pow(1.0 - bP, 3.0);
+          punchScale = 0.90 + bEase * 0.56; // 24m -> 35m 반동 줌아웃!
+          extraFovShift = -bEase * 24.0;
+        }
+      } else if (apexId === 'elastic' && apexSceneExtras) {
+        const c2T = apexSceneExtras.clash2Time || 0.18;
+        if (act3Elapsed < c2T) {
+          const uC = act3Elapsed / c2T;
+          punchScale = 1.0 - uC * 0.08;
+          extraFovShift = uC * 10.0;
+        } else {
+          const bP = Math.min(1.0, (act3Elapsed - c2T) / 0.24);
+          const bEase = 1.0 - Math.pow(1.0 - bP, 3.0);
+          punchScale = 0.92 + bEase * 0.46; // 17.5m -> 24.2m 반동 줌아웃!
+          extraFovShift = -bEase * 24.0;
+        }
+      }
+
+      const baseX = apexAct3Cam.x + (apexAct3Cam.endX - apexAct3Cam.x) * p3;
+      const baseY = apexAct3Cam.y + (apexAct3Cam.endY - apexAct3Cam.y) * p3;
+      const baseZ = apexAct3Cam.z + (apexAct3Cam.endZ - apexAct3Cam.z) * p3;
+      apexCamX = apexAct3Cam.lookX + (baseX - apexAct3Cam.lookX) * punchScale;
+      apexCamY = Math.max(5.0, apexAct3Cam.lookY + (baseY - apexAct3Cam.lookY) * punchScale);
+      apexCamZ = apexAct3Cam.lookZ + (baseZ - apexAct3Cam.lookZ) * punchScale;
+      const lx = apexAct3Cam.lookX * 0.72 + px * 0.28;
+      const ly = apexAct3Cam.lookY * 0.72 + py * 0.28;
+      const lz = apexAct3Cam.lookZ * 0.72 + pz * 0.28;
       const dx = lx - apexCamX, dy = ly - apexCamY, dz = lz - apexCamZ;
       camLagYaw = Math.atan2(dx, dz);
       camPitch = Math.max(-1.05, Math.min(0.85, Math.atan2(dy, Math.hypot(dx, dz) || 1.0)));
       camRoll = apexAct3Cam.roll;
-      fovD = apexAct3Cam.fov - p3 * 16.0;
+      fovD = Math.max(106.0, apexAct3Cam.fov - p3 * 14.0 + extraFovShift);
     }
     apexCamBlend = 1.0;
     apexLetterbox = 1.0;
@@ -1152,15 +1277,16 @@ function applyApexReleaseCamera(rawDt) {
       spawnSparks(px, py, pz, PAL.GOLD, 24, 62);
       shockwaves.push({ x: px, y: py, z: pz, r: 8, maxR: 112, life: 0.85, maxLife: 0.85, col: PAL.GOLD });
     }
-    // #4 올가미 스윙: 0.60s 중앙 압착 완료(p3 >= 0.40) -> 2프레임 스냅 + 대파열
-    if (apexId === 'lasso_swing' && apexSceneExtras && !apexSceneExtras.lassoBurstDone && p3 >= 0.40) {
+    // #4 올가미 스윙: 0.22s 초고속 탄성 폭축 완료 -> 2프레임 스냅 + 반동 대파열!
+    if (apexId === 'lasso_swing' && apexSceneExtras && !apexSceneExtras.lassoBurstDone && act3Elapsed >= (apexSceneExtras.lassoPullDur || 0.22)) {
       apexSceneExtras.lassoBurstDone = true;
-      apexFlashTimer = 0.06;
+      apexFlashTimer = 0.068;
       if (typeof playSfx === 'function') playSfx('apex_lasso_burst');
       const tp = apexSceneExtras.targetPt || { x: px, y: py, z: pz };
-      shakeMag = Math.max(shakeMag, 6.4);
-      spawnSparks(tp.x, tp.y, tp.z, PAL.GOLD, 22, 62);
-      shockwaves.push({ x: tp.x, y: tp.y, z: tp.z, r: 8, maxR: 142, life: 0.65, maxLife: 0.65, col: '#d8b4fe' });
+      shakeMag = Math.max(shakeMag, 7.0);
+      spawnSparks(tp.x, tp.y, tp.z, PAL.GOLD, 26, 70);
+      spawnSparks(tp.x, tp.y, tp.z, '#d8b4fe', 18, 56);
+      shockwaves.push({ x: tp.x, y: tp.y, z: tp.z, r: 8, maxR: 152, life: 0.72, maxLife: 0.72, col: '#d8b4fe' });
     }
     // #5 연쇄 핀볼: 0.18s 간격으로 1->6 꼭짓점 순차 번개 릴레이 + 6연타 사운드 + 최종점 피날레
     if (apexId === 'chain_pinball' && apexSceneExtras && apexSceneExtras.chainPts) {
@@ -1185,24 +1311,20 @@ function applyApexReleaseCamera(rawDt) {
         }
       }
     }
-    // #6 탄성 반발: 0.00~0.38s 초고속 가속 수축 -> 0.38s 2차 공중 정면 대충돌!
+    // #6 탄성 반발: 0.00~0.18s 초고속 미사일 가속 수축(1 - u^4) -> 0.18s 2차 공중 정면 대충돌!
     if (apexId === 'elastic' && apexSceneExtras) {
-      const clashT = apexSceneExtras.clash2Time || 0.38;
+      const clashT = apexSceneExtras.clash2Time || 0.18;
       if (act3Elapsed < clashT) {
         const uSnap = Math.max(0.0, Math.min(1.0, act3Elapsed / clashT));
-        const stretch = Math.max(0.0, 1.0 - Math.pow(uSnap, 2.5));
+        const stretch = Math.max(0.0, 1.0 - Math.pow(uSnap, 4.0));
         syncElasticVisualPositions(stretch);
-        if (apexSceneExtras.snapGhostCount === 0 && uSnap >= 0.34) {
-          apexSceneExtras.snapGhostCount = 1;
+        const snapMarks = [0.25, 0.42, 0.58, 0.74, 0.88];
+        while (apexSceneExtras.snapGhostCount < snapMarks.length && uSnap >= snapMarks[apexSceneExtras.snapGhostCount]) {
+          const sg = apexSceneExtras.snapGhostCount;
+          apexSceneExtras.snapGhostCount++;
           afterimages.push({
             x: px + apexPlayerDrawOff.x, y: py + apexPlayerDrawOff.y, z: pz + apexPlayerDrawOff.z,
-            poseKey: 'STRIKE_DROPKICK', rot: 0, tone: 1, life: 1.4
-          });
-        } else if (apexSceneExtras.snapGhostCount === 1 && uSnap >= 0.66) {
-          apexSceneExtras.snapGhostCount = 2;
-          afterimages.push({
-            x: px + apexPlayerDrawOff.x, y: py + apexPlayerDrawOff.y, z: pz + apexPlayerDrawOff.z,
-            poseKey: 'STRIKE_DROPKICK', rot: 0, tone: 0, life: 1.4
+            poseKey: 'STRIKE_DROPKICK', rot: 0, tone: (sg & 1), life: 1.5
           });
         }
       } else if (!apexSceneExtras.clash2Done) {
@@ -1211,19 +1333,19 @@ function applyApexReleaseCamera(rawDt) {
         apexPlayerDrawOff.x = 0.0;
         apexPlayerDrawOff.y = 0.0;
         apexPlayerDrawOff.z = 0.0;
-        apexFlashTimer = 0.068; // 2차 공중 대충돌 2~3프레임 임팩트 스냅!
+        apexFlashTimer = 0.072; // 2차 공중 대충돌 강렬한 임팩트 스냅!
         if (typeof playSfx === 'function') playSfx('apex_elastic');
-        shakeMag = Math.max(shakeMag, 6.8);
+        shakeMag = Math.max(shakeMag, 7.4);
         const mp = apexSceneExtras.midPt || { x: px, y: py, z: pz };
         const rd = apexSceneExtras.recoilDir || { x: 1, y: 0, z: 0 };
-        spawnSparks(mp.x, mp.y, mp.z, PAL.EMERALD, 24, 68);
-        spawnSparks(mp.x, mp.y, mp.z, PAL.GOLD, 18, 56);
-        shockwaves.push({ x: mp.x, y: mp.y, z: mp.z, r: 8, maxR: 138, life: 0.90, maxLife: 0.90, col: PAL.EMERALD });
+        spawnSparks(mp.x, mp.y, mp.z, PAL.EMERALD, 28, 76);
+        spawnSparks(mp.x, mp.y, mp.z, PAL.GOLD, 22, 64);
+        shockwaves.push({ x: mp.x, y: mp.y, z: mp.z, r: 8, maxR: 150, life: 0.95, maxLife: 0.95, col: PAL.EMERALD });
         // 반발 축을 관통하는 4다발 충격 번개 폭발
-        spawnLightningBolt(mp.x - rd.x * 26, mp.y - rd.y * 26, mp.z - rd.z * 26, mp.x + rd.x * 26, mp.y + rd.y * 26, mp.z + rd.z * 26, PAL.EMERALD, 0.72);
-        spawnLightningBolt(mp.x - rd.x * 22, mp.y + 4.5, mp.z - rd.z * 22, mp.x + rd.x * 22, mp.y - 4.0, mp.z + rd.z * 22, '#ffffff', 0.64);
-        spawnLightningBolt(mp.x - rd.z * 18, mp.y + 5.5, mp.z + rd.x * 18, mp.x + rd.z * 18, mp.y - 5.5, mp.z - rd.x * 18, PAL.GOLD, 0.60);
-        spawnLightningBolt(mp.x + rd.z * 16, mp.y + 6.5, mp.z - rd.x * 16, mp.x - rd.z * 16, mp.y - 6.0, mp.z + rd.x * 16, PAL.EMERALD, 0.56);
+        spawnLightningBolt(mp.x - rd.x * 32, mp.y - rd.y * 32, mp.z - rd.z * 32, mp.x + rd.x * 32, mp.y + rd.y * 32, mp.z + rd.z * 32, PAL.EMERALD, 0.78);
+        spawnLightningBolt(mp.x - rd.x * 26, mp.y + 5.0, mp.z - rd.z * 26, mp.x + rd.x * 26, mp.y - 4.5, mp.z + rd.z * 26, '#ffffff', 0.68);
+        spawnLightningBolt(mp.x - rd.z * 22, mp.y + 6.0, mp.z + rd.x * 22, mp.x + rd.z * 22, mp.y - 6.0, mp.z - rd.x * 22, PAL.GOLD, 0.64);
+        spawnLightningBolt(mp.x + rd.z * 18, mp.y + 7.0, mp.z - rd.x * 18, mp.x - rd.z * 18, mp.y - 6.5, mp.z + rd.x * 18, PAL.EMERALD, 0.60);
       }
     }
     return;
