@@ -568,7 +568,10 @@ function drawBossHazards3D(cb) {
 
 
 function drawSpiderManSprite(cb, totalSpeed) {
-  const centerPt = projectWorldPt(px, py, pz, cb);
+  const drawPx = px + (apexActive ? apexPlayerDrawOff.x : 0.0);
+  const drawPy = py + (apexActive ? apexPlayerDrawOff.y : 0.0);
+  const drawPz = pz + (apexActive ? apexPlayerDrawOff.z : 0.0);
+  const centerPt = projectWorldPt(drawPx, drawPy, drawPz, cb);
   if (!centerPt) return null;
 
   let poseKey = 'DIVE';
@@ -585,7 +588,7 @@ function drawSpiderManSprite(cb, totalSpeed) {
     else if (openingPoseMode === 'POSE') poseKey = 'DROP_HERO';
     else poseKey = 'DIVE';
   } else if (apexDef) {
-    if (apexTimer < APEX_ACT1_DUR) {
+    if (apexTimer < APEX_ACT2_DUR) {
       poseKey = apexDef.pose1;
       spinThisPose = false;
     } else {
@@ -618,7 +621,7 @@ function drawSpiderManSprite(cb, totalSpeed) {
     if (!ap) continue;
     const aPose = spideySprites[ai.poseKey] || spideySprites.FLIP;
     const ghostCanvas = ai.tone === 0 ? aPose.cyanGhost : aPose.goldGhost;
-    const maxGhostH = isHeroPoseCut ? 64 : (apexActive ? 56 : 46);
+    const maxGhostH = isHeroPoseCut ? 64 : (apexActive ? 58 : 46);
     const sc = Math.max(12, Math.min(maxGhostH, (4.2 / ap.z) * cb.d)) / ghostCanvas.height;
     const dw = Math.round(ghostCanvas.width * sc), dh = Math.round(ghostCanvas.height * sc);
     ctx.save();
@@ -631,7 +634,8 @@ function drawSpiderManSprite(cb, totalSpeed) {
 
   const pose = spideySprites[poseKey] || spideySprites.DIVE;
   const spr = pose.canvas;
-  const maxSprH = isHeroPoseCut ? 72 : (apexActive ? 64 : 54);
+  const isApexCloseUp = (apexActive && apexTimer < APEX_ACT1_DUR && apexId !== 'elastic');
+  const maxSprH = isHeroPoseCut ? 72 : (isApexCloseUp ? 76 : (apexActive ? 64 : 54));
   const screenH = Math.max(14, Math.min(maxSprH, (4.2 / centerPt.z) * cb.d));
   const scale = screenH / spr.height;
   const drawW = Math.round(spr.width * scale), drawH = Math.round(spr.height * scale);
@@ -940,15 +944,18 @@ function renderWorld3D(isFrozen, nearbyBlocks, nearbyBuildings, nearbyClouds, ne
     if (sp) { ctx.fillStyle = s.col; ctx.fillRect(sp.x | 0, sp.y | 0, 2, 2); }
   }
 
-  // [Step 4] 3.0초 3-Act 깔끔한 90년대 애니메이션/스파이더버스식 3D 물리 연출 (다트판·원통 0%)
+  // [Step 4] 5.0초 4-Act 깔끔한 90년대 애니메이션/스파이더버스식 3D 물리 연출 (다트판·원통·벽 0%)
   if (apexActive && apexSceneExtras) {
     const defA = APEX_CUT_DEFS[apexId];
     const accCol = defA ? defA.col : PAL.GOLD;
     const inAct1 = apexTimer < APEX_ACT1_DUR;
     const inAct2 = apexTimer >= APEX_ACT1_DUR && apexTimer < APEX_ACT2_DUR;
-    const p2 = inAct2 ? Math.max(0.0, Math.min(1.0, (apexTimer - APEX_ACT1_DUR) / (APEX_ACT2_DUR - APEX_ACT1_DUR))) : (apexTimer >= APEX_ACT2_DUR ? 1.0 : 0.0);
-    const p3Fade = apexTimer >= APEX_ACT2_DUR ? Math.max(0.0, 1.0 - (apexTimer - APEX_ACT2_DUR) / 0.38) : 1.0;
-    const pPt = projectWorldPt(px, py, pz, cb);
+    const inFreeze = apexTimer < APEX_ACT2_DUR;
+    const inAct3 = apexTimer >= APEX_ACT2_DUR && apexTimer < APEX_ACT3_DUR;
+    const act3Elapsed = Math.max(0.0, apexTimer - APEX_ACT2_DUR);
+    const act3Dur = Math.max(0.05, APEX_ACT3_DUR - APEX_ACT2_DUR);
+    const p3 = inAct3 ? Math.max(0.0, Math.min(1.0, act3Elapsed / act3Dur)) : (apexTimer >= APEX_ACT3_DUR ? 1.0 : 0.0);
+    const p4Fade = apexTimer >= APEX_ACT3_DUR ? Math.max(0.0, 1.0 - (apexTimer - APEX_ACT3_DUR) / 0.42) : 1.0;
 
     // 1) 분할선 없는 깔끔한 3D 수평 충격파 링 (초중력 슈트 바닥 기압파 전용)
     const drawCleanRing3D = (cx, cy, cz, rad, segs, col, width) => {
@@ -1038,15 +1045,22 @@ function renderWorld3D(isFrozen, nearbyBlocks, nearbyBuildings, nearbyClouds, ne
       drawDiamond(baseAng + Math.PI * 0.5, vLen * 0.72, wMain * 0.45, '#ffffff');
     };
 
-    // 4) 지그재그 3D 콘크리트 균열선 (탄성 반발 벽면 강타용)
-    const drawJaggedCrack3D = (origin, dirX, dirY, dirZ, len, seed, col) => {
-      const p0 = origin;
-      const p1 = { x: origin.x + dirX * len * 0.38, y: origin.y + dirY * len * 0.38 + Math.sin(seed) * 1.8, z: origin.z + dirZ * len * 0.38 };
-      const p2 = { x: origin.x + dirX * len * 0.72, y: origin.y + dirY * len * 0.72 - Math.cos(seed) * 1.9, z: origin.z + dirZ * len * 0.72 };
-      const p3 = { x: origin.x + dirX * len, y: origin.y + dirY * len, z: origin.z + dirZ * len };
-      draw3DThickBeam(p0, p1, 2.2, col, '#ffffff');
-      draw3DThickBeam(p1, p2, 1.7, col, '#ffffff');
-      draw3DThickBeam(p2, p3, 1.1, col, null);
+    // 4) 팽팽하게 진동하는 3D 탄성 거미줄 스트랜드 (#6 탄성 반발 전용)
+    const drawElasticStrand3D = (a, b, offY, vibAmp, vibPhase, wid, col, coreCol) => {
+      const segs = 6;
+      let prev = { x: a.x, y: a.y + offY, z: a.z };
+      for (let i = 1; i <= segs; i++) {
+        const t = i / segs;
+        const env = Math.sin(t * Math.PI); // 양 끝 고정, 중앙 최대 진동
+        const vib = vibAmp > 0.01 ? Math.sin(vibPhase + i * 2.4) * vibAmp * env : 0.0;
+        const cur = {
+          x: a.x + (b.x - a.x) * t,
+          y: a.y + (b.y - a.y) * t + offY + vib,
+          z: a.z + (b.z - a.z) * t
+        };
+        draw3DThickBeam(prev, cur, wid, col, coreCol);
+        prev = cur;
+      }
     };
 
     // 5) 결정론적 3D 물리 파편 블록 비산
@@ -1084,123 +1098,167 @@ function renderWorld3D(isFrozen, nearbyBlocks, nearbyBuildings, nearbyClouds, ne
       ctx.fillStyle = '#ffffff'; ctx.fillRect((sp.x - 1) | 0, (sp.y - 1) | 0, 2, 2);
     };
 
+    // #6 탄성 반발 공중 적 측 타깃 실루엣 (실전/테스트 모두 탄성줄 반대편 적의 반발·충돌 시각화)
+    const drawElasticEnemyNode = (pt, tensionCol) => {
+      const sp = projectWorldPt(pt.x, pt.y, pt.z, cb);
+      if (!sp || sp.z < 2.0) return;
+      const r = Math.max(5, Math.min(18, (4.8 / sp.z) * cb.d));
+      // 짙은 외곽 다이아몬드 적 코어
+      ctx.fillStyle = PAL.INDIGO_OUTLINE;
+      ctx.beginPath();
+      ctx.moveTo(sp.x, sp.y - r - 2); ctx.lineTo(sp.x + r + 2, sp.y);
+      ctx.lineTo(sp.x, sp.y + r + 2); ctx.lineTo(sp.x - r - 2, sp.y);
+      ctx.closePath(); ctx.fill();
+      ctx.fillStyle = PAL.CRIMSON;
+      ctx.beginPath();
+      ctx.moveTo(sp.x, sp.y - r); ctx.lineTo(sp.x + r, sp.y);
+      ctx.lineTo(sp.x, sp.y + r); ctx.lineTo(sp.x - r, sp.y);
+      ctx.closePath(); ctx.fill();
+      // 탄성 거미줄 포박 X-크로스 띠
+      ctx.strokeStyle = tensionCol; ctx.lineWidth = 1.6;
+      ctx.beginPath();
+      ctx.moveTo(sp.x - r * 0.72, sp.y - r * 0.72); ctx.lineTo(sp.x + r * 0.72, sp.y + r * 0.72);
+      ctx.moveTo(sp.x + r * 0.72, sp.y - r * 0.72); ctx.lineTo(sp.x - r * 0.72, sp.y + r * 0.72);
+      ctx.stroke();
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect((sp.x - 2) | 0, (sp.y - 2) | 0, 4, 4);
+    };
+
+    // 대각선 화면 전체 일섬(Flash Cut) 헬퍼 (#2 오버드라이브 2단계 X-일섬용)
+    const drawScreenFlashCut = (cutH, yLeft, yRight, col) => {
+      if (cutH <= 0.6) return;
+      ctx.fillStyle = PAL.INDIGO_OUTLINE;
+      ctx.beginPath();
+      ctx.moveTo(0, yLeft - cutH - 2); ctx.lineTo(LCD_W, yRight - cutH - 2);
+      ctx.lineTo(LCD_W, yRight + cutH + 2); ctx.lineTo(0, yLeft + cutH + 2);
+      ctx.closePath(); ctx.fill();
+      ctx.fillStyle = col;
+      ctx.beginPath();
+      ctx.moveTo(0, yLeft - cutH); ctx.lineTo(LCD_W, yRight - cutH);
+      ctx.lineTo(LCD_W, yRight + cutH); ctx.lineTo(0, yLeft + cutH);
+      ctx.closePath(); ctx.fill();
+      ctx.fillStyle = '#ffffff';
+      ctx.beginPath();
+      ctx.moveTo(0, yLeft - cutH * 0.45); ctx.lineTo(LCD_W, yRight - cutH * 0.45);
+      ctx.lineTo(LCD_W, yRight + cutH * 0.45); ctx.lineTo(0, yLeft + cutH * 0.45);
+      ctx.closePath(); ctx.fill();
+    };
+
     if (apexId === 'heavy_suit') {
-      // #1 초중력 슈트: 기준점 유지·정제 (웅장한 수직 대기 압착 기둥 + 깔끔한 무지 수평 기압 링 + 십자 섬광 + 파편 16개)
+      // #1 초중력 슈트: Act 1~2 수직 낙하 기압선 + Act 3 0.28s 압착 -> 거대 수직 대기 압착 기둥 + 무지 링 3겹 + 파편 18개
       const tp = apexSceneExtras.targetPt || { x: px, y: Math.max(6.0, py - 8.0), z: pz };
-      if (inAct1) {
-        draw3DThickBeam({ x: px, y: apexSceneExtras.dropTopY || (py + 40.0), z: pz }, { x: px, y: py + 2.0, z: pz }, 3.8, PAL.ORANGE, '#ffffff');
-        drawCleanRing3D(tp.x, tp.y, tp.z, 11.0, 20, PAL.ORANGE, 2.2);
-      } else if (p3Fade > 0.05) {
-        const wScale = (1.0 - p2 * 0.30) * p3Fade;
-        draw3DThickBeam({ x: tp.x, y: Math.max(1.0, tp.y - 4.0), z: tp.z }, { x: tp.x, y: tp.y + 240.0, z: tp.z }, 16.5 * wScale, PAL.ORANGE, '#ffffff');
+      if (inFreeze) {
+        draw3DThickBeam({ x: px, y: apexSceneExtras.dropTopY || (py + 42.0), z: pz }, { x: px, y: py + 2.0, z: pz }, inAct1 ? 2.6 : 4.0, PAL.ORANGE, '#ffffff');
+        drawCleanRing3D(tp.x, tp.y, tp.z, inAct1 ? 9.0 : 12.0, 20, PAL.ORANGE, 2.2);
+      } else if (inAct3 && p3 < 0.19) {
+        // 1단계: 대기 압착 수축 (0.28s)
+        const cProg = p3 / 0.19;
+        draw3DThickBeam({ x: tp.x, y: tp.y, z: tp.z }, { x: tp.x, y: tp.y + 180.0, z: tp.z }, 5.5 - cProg * 2.5, PAL.GOLD, '#ffffff');
+        drawCleanRing3D(tp.x, tp.y, tp.z, 26.0 * (1.0 - cProg * 0.72), 20, '#ffffff', 2.4);
+      } else if (p4Fade > 0.05) {
+        // 2단계: 거대 수직 대기 압착 기둥 대폭발 + 3겹 깔끔한 수평 기압 링 + 파편 18개
+        const expP = Math.max(0.0, Math.min(1.0, (p3 - 0.19) / 0.81));
+        const wScale = (1.0 - expP * 0.28) * p4Fade;
+        draw3DThickBeam({ x: tp.x, y: Math.max(1.0, tp.y - 4.0), z: tp.z }, { x: tp.x, y: tp.y + 250.0, z: tp.z }, 17.5 * wScale, PAL.ORANGE, '#ffffff');
         for (let ri = 0; ri < 3; ri++) {
-          const rp = Math.max(0.0, Math.min(1.0, p2 * 1.25 - ri * 0.16));
+          const rp = Math.max(0.0, Math.min(1.0, expP * 1.28 - ri * 0.15));
           if (rp <= 0.01) continue;
-          const rad = 12.0 + rp * (78.0 + ri * 20.0);
-          const ry = tp.y + ri * 14.0 * rp;
+          const rad = 12.0 + rp * (84.0 + ri * 22.0);
+          const ry = tp.y + ri * 15.0 * rp;
           drawCleanRing3D(tp.x, ry, tp.z, rad, 22, ri === 0 ? '#ffffff' : (ri === 1 ? PAL.GOLD : PAL.ORANGE), ri === 0 ? 3.2 : 2.2);
         }
-        if (inAct2) {
-          drawCrossFlash(tp, Math.max(8, 52 * (1.0 - p2 * 0.65)), PAL.ORANGE, false);
-          draw3DDebrisChunks(tp, 17, 16, p2, 62.0, 28.0, PAL.ORANGE, PAL.GOLD, null);
+        if (inAct3) {
+          drawCrossFlash(tp, Math.max(10, 58 * (1.0 - expP * 0.60)), PAL.ORANGE, false);
+          draw3DDebrisChunks(tp, 17, 18, expP, 68.0, 30.0, PAL.ORANGE, PAL.GOLD, null);
         }
       }
-      if (apexSceneExtras.isDummy && inAct1) drawDummyNode(tp, PAL.ORANGE, true);
+      if (apexSceneExtras.isDummy && inAct2) drawDummyNode(tp, PAL.ORANGE, true);
     } else if (apexId === 'overdrive') {
-      // #2 오버드라이브 (원통·링 0%): 7중 3D 잔상 + 초음속 일섬(Flash Slash) + 고압 번개 + 스피드라인 폭풍
+      // #2 오버드라이브 (원통·링 0%): Act 1~2 7중 잔상 관통선 -> Act 3 2단계 교차 X-일섬(Flash Cut 1+2) + 6다발 번개 + 24줄 스피드라인
       const mSin = apexSceneExtras.mSin !== undefined ? apexSceneExtras.mSin : Math.sin(camYaw);
       const mCos = apexSceneExtras.mCos !== undefined ? apexSceneExtras.mCos : Math.cos(camYaw);
       const tp = apexSceneExtras.targetPt || { x: px + mSin * 12.0, y: py, z: pz + mCos * 12.0 };
-      if (inAct1) {
-        // Act 1: 7중 잔상을 관통하는 날카로운 초음속 궤적선
-        draw3DThickBeam({ x: px - mSin * 28.0, y: py, z: pz - mCos * 28.0 }, tp, 2.6, PAL.NEON_PINK, '#ffffff');
-      } else if (inAct2) {
-        // Act 2: 화면을 가로로 베는 날카로운 초음속 일섬 + 3D 궤적 섬광 + 전방위 스피드라인 폭풍
-        const slashW = Math.max(1.5, 11.0 * (1.0 - p2 * 0.68));
-        draw3DThickBeam({ x: px - mSin * 46.0, y: py, z: pz - mCos * 46.0 }, { x: tp.x + mSin * 30.0, y: tp.y, z: tp.z + mCos * 30.0 }, slashW, PAL.NEON_PINK, '#ffffff');
-        // 화면 전체를 가르는 대각선 일섬(Flash Cut)
-        const cutH = Math.max(0, (1.0 - p2 * 1.45)) * 12.0;
-        if (cutH > 0.6) {
-          ctx.fillStyle = PAL.INDIGO_OUTLINE;
-          ctx.beginPath();
-          ctx.moveTo(0, LCD_H * 0.56 - cutH - 2); ctx.lineTo(LCD_W, LCD_H * 0.42 - cutH - 2);
-          ctx.lineTo(LCD_W, LCD_H * 0.42 + cutH + 2); ctx.lineTo(0, LCD_H * 0.56 + cutH + 2);
-          ctx.closePath(); ctx.fill();
-          ctx.fillStyle = PAL.NEON_PINK;
-          ctx.beginPath();
-          ctx.moveTo(0, LCD_H * 0.56 - cutH); ctx.lineTo(LCD_W, LCD_H * 0.42 - cutH);
-          ctx.lineTo(LCD_W, LCD_H * 0.42 + cutH); ctx.lineTo(0, LCD_H * 0.56 + cutH);
-          ctx.closePath(); ctx.fill();
-          ctx.fillStyle = '#ffffff';
-          ctx.beginPath();
-          ctx.moveTo(0, LCD_H * 0.56 - cutH * 0.45); ctx.lineTo(LCD_W, LCD_H * 0.42 - cutH * 0.45);
-          ctx.lineTo(LCD_W, LCD_H * 0.42 + cutH * 0.45); ctx.lineTo(0, LCD_H * 0.56 + cutH * 0.45);
-          ctx.closePath(); ctx.fill();
+      if (inFreeze) {
+        draw3DThickBeam({ x: px - mSin * 28.0, y: py, z: pz - mCos * 28.0 }, tp, inAct1 ? 2.0 : 2.8, PAL.NEON_PINK, '#ffffff');
+      } else if (inAct3) {
+        const slashW = Math.max(1.8, 11.5 * (1.0 - p3 * 0.60));
+        draw3DThickBeam({ x: px - mSin * 48.0, y: py, z: pz - mCos * 48.0 }, { x: tp.x + mSin * 32.0, y: tp.y, z: tp.z + mCos * 32.0 }, slashW, PAL.NEON_PINK, '#ffffff');
+        // 1차 대각선 일섬 (p3: 0.00~0.55)
+        const cutH1 = Math.max(0, 1.0 - p3 * 2.1) * 12.5;
+        drawScreenFlashCut(cutH1, LCD_H * 0.58, LCD_H * 0.40, PAL.NEON_PINK);
+        // 2차 반대 대각선 X-교차 일섬 (p3 >= 0.40)
+        if (p3 >= 0.40) {
+          const s2p = (p3 - 0.40) / 0.60;
+          const cutH2 = Math.max(0, 1.0 - s2p * 1.65) * 14.0;
+          drawScreenFlashCut(cutH2, LCD_H * 0.36, LCD_H * 0.62, PAL.NEON_CYAN);
+          drawCrossFlash(tp, Math.max(10, 68 * (1.0 - s2p * 0.60)), PAL.GOLD, false);
+          draw3DDebrisChunks(tp, 41, 18, s2p, 56.0, 20.0, PAL.NEON_CYAN, PAL.GOLD, { x: -mSin, z: -mCos });
         }
-        drawCrossFlash(tp, Math.max(10, 62 * (1.0 - p2 * 0.55)), PAL.NEON_PINK, true);
-        // 초고속 수평/방사 스피드라인 폭풍 (22줄)
+        drawCrossFlash(tp, Math.max(10, 62 * (1.0 - p3 * 0.55)), PAL.NEON_PINK, true);
+        // 초고속 전방위 스피드라인 폭풍 (24줄)
         ctx.lineWidth = 1.2;
-        for (let i = 0; i < 22; i++) {
-          const ang = (i / 22) * Math.PI * 2 + p2 * 0.4;
-          const rIn = 46 + ((i * 19) % 28);
-          const rOut = rIn + 55 + ((i * 23) % 45);
+        for (let i = 0; i < 24; i++) {
+          const ang = (i / 24) * Math.PI * 2 + p3 * 0.55;
+          const rIn = 44 + ((i * 19) % 28);
+          const rOut = rIn + 58 + ((i * 23) % 46);
           ctx.strokeStyle = (i % 3 === 0) ? '#ffffff' : ((i & 1) ? PAL.NEON_PINK : PAL.NEON_CYAN);
           ctx.beginPath();
           ctx.moveTo(LCD_W * 0.5 + Math.cos(ang) * rIn, LCD_H * 0.5 + Math.sin(ang) * rIn * 0.55);
           ctx.lineTo(LCD_W * 0.5 + Math.cos(ang) * rOut, LCD_H * 0.5 + Math.sin(ang) * rOut * 0.55);
           ctx.stroke();
         }
-        draw3DDebrisChunks({ x: px, y: py, z: pz }, 31, 14, p2, 48.0, 16.0, PAL.NEON_PINK, PAL.NEON_CYAN, { x: -mSin, z: -mCos });
       }
-      if (apexSceneExtras.isDummy && inAct1) drawDummyNode(tp, PAL.NEON_PINK, true);
+      if (apexSceneExtras.isDummy && inAct2) drawDummyNode(tp, PAL.NEON_PINK, true);
     } else if (apexId === 'bungee_web') {
-      // #3 고탄성 번지줄 (원뿔·막대·링 0%): 팽팽한 거미줄 스냅 절단 -> 대형 2번 구름 10개 하향 돌파 + 수직 스피드라인 폭풍
+      // #3 고탄성 번지줄 (원뿔·막대·링 0%): Act 1~2 팽팽한 거미줄 -> Act 3 0.35s 스냅 절단 + 대형 2번 구름 12개 성층권 돌파 + 28줄 수직 스피드라인
       const anc = apexSceneExtras.anchorPt;
-      if (inAct1) {
+      if (inFreeze) {
         if (anc) {
-          draw3DThickBeam({ x: px, y: py, z: pz }, anc, 2.8, PAL.GOLD, '#ffffff');
+          draw3DThickBeam({ x: px, y: py, z: pz }, anc, inAct1 ? 2.4 : 3.0, PAL.GOLD, '#ffffff');
         }
-      } else if (inAct2) {
-        // 거미줄 스냅 절단 직후 잔상 빛줄기
-        if (p2 < 0.25 && anc) {
-          const snapP = p2 / 0.25;
+      } else if (inAct3) {
+        if (p3 < 0.23 && anc) {
+          const snapP = p3 / 0.23;
           const midPt = { x: px + (anc.x - px) * snapP, y: py + (anc.y - py) * snapP, z: pz + (anc.z - pz) * snapP };
-          draw3DThickBeam(midPt, anc, 2.4 * (1.0 - snapP), PAL.GOLD, '#ffffff');
-        }
-        drawCrossFlash({ x: px, y: py - 3.0, z: pz }, Math.max(6, 48 * (1.0 - p2 * 0.85)), PAL.GOLD, false);
-        // 수직 상승 스피드라인 폭풍 (24줄)
-        for (let i = 0; i < 24; i++) {
-          const lx = ((i * 37 + 13) % (LCD_W - 12)) + 6;
-          const phase = (p2 * (2.4 + (i % 4) * 0.55) + i * 0.19) % 1.0;
-          const ly = phase * (LCD_H + 55) - 45;
-          const segL = 24 + (i % 3) * 16;
-          ctx.strokeStyle = (i % 3 === 0) ? '#ffffff' : ((i & 1) ? PAL.GOLD : PAL.NEON_CYAN);
-          ctx.lineWidth = (i % 4 === 0) ? 1.8 : 1.0;
-          ctx.beginPath(); ctx.moveTo(lx, ly); ctx.lineTo(lx, ly + segL); ctx.stroke();
-        }
-        // 대형 2번 구름 10개가 화면 전체를 가르며 아래로 쏟아지는 성층권 돌파 스윕!
-        if (cloudSpr) {
-          for (let ci = 0; ci < 10; ci++) {
-            const lanePhase = (p2 * (2.3 + (ci % 4) * 0.45) + ci * 0.21) % 1.0;
-            const sc = 1.45 + (ci % 4) * 0.42;
-            const cw = Math.round(cloudSpr.width * sc);
-            const ch = Math.round(cloudSpr.height * sc);
-            const side = (ci & 1) ? 1 : -1;
-            const spread = (ci % 5) * 16;
-            const cxPos = side < 0 ? Math.round(-cw * 0.28 + spread) : Math.round(LCD_W - cw * 0.72 - spread);
-            const cyPos = Math.round(lanePhase * (LCD_H + ch * 2) - ch);
-            ctx.drawImage(cloudSpr, cxPos, cyPos, cw, ch);
+          draw3DThickBeam(midPt, anc, 2.8 * (1.0 - snapP * 0.65), PAL.GOLD, '#ffffff');
+          drawCrossFlash({ x: px, y: py - 2.0, z: pz }, Math.max(8, 52 * (1.0 - snapP * 0.5)), PAL.GOLD, false);
+        } else {
+          const rushP = (p3 - 0.23) / 0.77;
+          drawCrossFlash({ x: px, y: py - 3.0, z: pz }, Math.max(6, 54 * (1.0 - rushP * 0.78)), PAL.GOLD, false);
+          // 수직 상승 스피드라인 폭풍 (28줄)
+          for (let i = 0; i < 28; i++) {
+            const lx = ((i * 37 + 13) % (LCD_W - 12)) + 6;
+            const phase = (rushP * (2.6 + (i % 4) * 0.60) + i * 0.17) % 1.0;
+            const ly = phase * (LCD_H + 55) - 45;
+            const segL = 26 + (i % 3) * 16;
+            ctx.strokeStyle = (i % 3 === 0) ? '#ffffff' : ((i & 1) ? PAL.GOLD : PAL.NEON_CYAN);
+            ctx.lineWidth = (i % 4 === 0) ? 1.8 : 1.0;
+            ctx.beginPath(); ctx.moveTo(lx, ly); ctx.lineTo(lx, ly + segL); ctx.stroke();
+          }
+          // 대형 2번 구름 12개 하향 돌파 스윕!
+          if (cloudSpr) {
+            for (let ci = 0; ci < 12; ci++) {
+              const lanePhase = (rushP * (2.5 + (ci % 4) * 0.48) + ci * 0.18) % 1.0;
+              const sc = 1.45 + (ci % 4) * 0.44;
+              const cw = Math.round(cloudSpr.width * sc);
+              const ch = Math.round(cloudSpr.height * sc);
+              const side = (ci & 1) ? 1 : -1;
+              const spread = (ci % 5) * 16;
+              const cxPos = side < 0 ? Math.round(-cw * 0.28 + spread) : Math.round(LCD_W - cw * 0.72 - spread);
+              const cyPos = Math.round(lanePhase * (LCD_H + ch * 2) - ch);
+              ctx.drawImage(cloudSpr, cxPos, cyPos, cw, ch);
+            }
           }
         }
       }
-      if (apexSceneExtras.isDummy && apexSceneExtras.targetPt && inAct1) {
+      if (apexSceneExtras.isDummy && apexSceneExtras.targetPt && inAct2) {
         drawDummyNode(apexSceneExtras.targetPt, PAL.GOLD, true);
       }
     } else if (apexId === 'lasso_swing' && apexSceneExtras.lassoPts) {
-      // #4 올가미 스윙 (다트판 링 0%): 팽팽한 3D 거미줄 결박 -> 중앙 1점 압착 파열(8가닥 날카로운 충격 스파이크 + 십자 플래시 + 파편 18개)
+      // #4 올가미 스윙 (다트판 링 0%): Act 1~2 3D 거미줄 결박 -> Act 3 0.60s 중앙 압착 + 0.90s 8가닥 충격 스파이크 + 이중 십자 플래시 + 파편 20개
       const lPts = apexSceneExtras.lassoPts;
       const tPt = apexSceneExtras.targetPt || { x: px, y: py, z: pz };
-      const pullT = inAct1 ? 0.0 : Math.min(1.0, p2 / 0.42);
+      const pullT = inFreeze ? 0.0 : Math.min(1.0, p3 / 0.40);
       const curPts = [];
       for (let i = 0; i < lPts.length; i++) {
         const lp = lPts[i];
@@ -1210,38 +1268,39 @@ function renderWorld3D(isFrozen, nearbyBlocks, nearbyBuildings, nearbyClouds, ne
           z: lp.z + (tPt.z - lp.z) * pullT
         });
       }
-      if (inAct1 || pullT < 0.99) {
+      if (inFreeze || pullT < 0.99) {
         for (let i = 0; i < curPts.length; i++) {
-          draw3DThickBeam({ x: px, y: py, z: pz }, curPts[i], 2.4, (i & 1) ? '#d8b4fe' : '#a78bfa', '#ffffff');
-          draw3DThickBeam(curPts[i], curPts[(i + 1) % curPts.length], 1.6, '#a78bfa', '#ffffff');
-          if (apexSceneExtras.isDummy) drawDummyNode(curPts[i], '#d8b4fe', false);
+          draw3DThickBeam({ x: px, y: py, z: pz }, curPts[i], inAct1 ? 2.0 : 2.5, (i & 1) ? '#d8b4fe' : '#a78bfa', '#ffffff');
+          if (!inAct1) {
+            draw3DThickBeam(curPts[i], curPts[(i + 1) % curPts.length], 1.6, '#a78bfa', '#ffffff');
+          }
+          if (apexSceneExtras.isDummy && !inAct1) drawDummyNode(curPts[i], '#d8b4fe', false);
         }
-      } else if (inAct2) {
-        const expT = Math.max(0.0, Math.min(1.0, (p2 - 0.42) / 0.58));
-        // 사방으로 찢어지는 8가닥 날카로운 3D 충격 스파이크 빔
+      } else if (inAct3) {
+        const expT = Math.max(0.0, Math.min(1.0, (p3 - 0.40) / 0.60));
         for (let bi = 0; bi < 8; bi++) {
           const ba = (bi / 8) * Math.PI * 2 + 0.2;
           const elev = (bi & 1) ? 0.42 : -0.35;
-          const lenB = 18.0 + expT * 62.0;
+          const lenB = 18.0 + expT * 68.0;
           draw3DThickBeam(
             tPt,
             { x: tPt.x + Math.cos(ba) * lenB, y: tPt.y + elev * lenB, z: tPt.z + Math.sin(ba) * lenB },
-            4.6 * (1.0 - expT * 0.55),
+            4.8 * (1.0 - expT * 0.52),
             (bi & 1) ? PAL.GOLD : '#d8b4fe', '#ffffff'
           );
         }
-        drawCrossFlash(tPt, Math.max(12, 68 * (1.0 - expT * 0.55)), PAL.GOLD, false);
-        drawCrossFlash(tPt, Math.max(8, 48 * (1.0 - expT * 0.60)), '#d8b4fe', true);
-        draw3DDebrisChunks(tPt, 53, 18, expT, 66.0, 26.0, '#a78bfa', PAL.GOLD, null);
+        drawCrossFlash(tPt, Math.max(12, 72 * (1.0 - expT * 0.55)), PAL.GOLD, false);
+        drawCrossFlash(tPt, Math.max(8, 52 * (1.0 - expT * 0.58)), '#d8b4fe', true);
+        draw3DDebrisChunks(tPt, 53, 20, expT, 70.0, 28.0, '#a78bfa', PAL.GOLD, null);
       }
-      if (apexSceneExtras.isDummy && inAct1) drawDummyNode(tPt, PAL.GOLD, true);
+      if (apexSceneExtras.isDummy && inAct2) drawDummyNode(tPt, PAL.GOLD, true);
     } else if (apexId === 'chain_pinball' && apexSceneExtras.chainPts) {
-      // #5 연쇄 핀볼 (다트판 링 0%): 5체 3D 분신 잔상 + 6꼭짓점 순차 굵은 번개 일섬 & 십자 충격 섬광
+      // #5 연쇄 핀볼 (다트판 링 0%): 5체 3D 분신 잔상 + Act 3 0.18s 간격 1->6 순차 번개 릴레이 + 최종점 대폭발(파편 20개)
       const cPts = apexSceneExtras.chainPts;
       const sparkIdx = apexSceneExtras.chainSparkIdx || -1;
       for (let i = 0; i < cPts.length - 1; i++) {
-        const lit = inAct2 && i <= sparkIdx;
-        draw3DThickBeam(cPts[i], cPts[i + 1], lit ? 5.8 : 2.6, lit ? PAL.GOLD : PAL.NEON_PINK, '#ffffff');
+        const lit = inAct3 && i <= sparkIdx;
+        draw3DThickBeam(cPts[i], cPts[i + 1], lit ? 6.0 : (inAct1 ? 2.0 : 2.8), lit ? PAL.GOLD : PAL.NEON_PINK, '#ffffff');
       }
       for (let i = 0; i < cPts.length; i++) {
         const vp = projectWorldPt(cPts[i].x, cPts[i].y, cPts[i].z, cb);
@@ -1249,43 +1308,97 @@ function renderWorld3D(isFrozen, nearbyBlocks, nearbyBuildings, nearbyClouds, ne
           ctx.fillStyle = PAL.INDIGO_OUTLINE; ctx.fillRect((vp.x - 3) | 0, (vp.y - 3) | 0, 6, 6);
           ctx.fillStyle = i === cPts.length - 1 ? PAL.GOLD : '#ffffff'; ctx.fillRect((vp.x - 2) | 0, (vp.y - 2) | 0, 4, 4);
         }
-        if (inAct2 && i <= sparkIdx) {
-          const localT = Math.max(0.0, Math.min(1.0, (p2 - i * 0.14) / 0.45));
+        if (inAct3 && i <= sparkIdx) {
+          const localT = Math.max(0.0, Math.min(1.0, (act3Elapsed - i * 0.18) / 0.52));
           if (localT > 0.01 && localT < 1.0) {
             const isLast = (i === cPts.length - 1);
-            const flashSz = (isLast ? 64 : 34) * (1.0 - localT * 0.65);
+            const flashSz = (isLast ? 70 : 38) * (1.0 - localT * 0.62);
             drawCrossFlash(cPts[i], flashSz, isLast ? PAL.GOLD : PAL.NEON_PINK, (i & 1) === 1);
             if (isLast) {
               drawCrossFlash(cPts[i], flashSz * 0.85, PAL.NEON_PINK, false);
-              draw3DDebrisChunks(cPts[i], 79, 16, localT, 56.0, 24.0, PAL.NEON_PINK, PAL.GOLD, null);
+              draw3DDebrisChunks(cPts[i], 79, 20, localT, 62.0, 26.0, PAL.NEON_PINK, PAL.GOLD, null);
             }
           }
         }
       }
     } else if (apexId === 'elastic') {
-      // #6 탄성 반발 (벽면/궤적 다트판 링 0%): 지그재그 콘크리트 균열선 6가닥 + 벽 파편 18개 + V자 초고속 도탄 일섬 빔 + 적중 십자 플래시
-      const wp = apexSceneExtras.wallPt;
-      const tp = apexSceneExtras.targetPt;
-      if (wp && pPt) {
-        const txW = -(wp.nz || 0.0), tzW = (wp.nx || 1.0);
-        const crackLen = inAct2 ? (17.0 + p2 * 9.0) : 12.0;
-        for (let ci = 0; ci < 6; ci++) {
-          const ca = (ci / 6) * Math.PI * 2 + 0.3;
-          drawJaggedCrack3D(wp, txW * Math.cos(ca), Math.sin(ca), tzW * Math.cos(ca), crackLen, ci * 3.1 + 1.2, ci & 1 ? '#ffffff' : PAL.EMERALD);
+      // #6 탄성 반발 (벽 0%, 다트판 링 0%, 근접 컷신 0%):
+      // Act 1 1차 공중 충돌 직후 즉시 양방향 빠른 튕김 -> Act 2 2가닥 탄성줄 한계 "쪼기"(에메랄드->골드->크림슨/화이트 점멸 + 고주파 진동) -> Act 3 초고속 수축 + 2차 공중 정면 대충돌!
+      const mp = apexSceneExtras.midPt || { x: px, y: py, z: pz };
+      const rd = apexSceneExtras.recoilDir || { x: 1, y: 0, z: 0 };
+      const eVis = apexSceneExtras.enemyVisPt || mp;
+      const pVis = { x: px + apexPlayerDrawOff.x, y: py + apexPlayerDrawOff.y, z: pz + apexPlayerDrawOff.z };
+      const stretch = apexSceneExtras.elasticStretch || 0.0;
+      const clashT = apexSceneExtras.clash2Time || 0.38;
+
+      if (inFreeze || (inAct3 && act3Elapsed < clashT)) {
+        // 1차 충돌 직후(0.00~0.26s) 중앙 임팩트 플래시로 빠른 튕김 기점 강조
+        if (inAct1 && apexTimer < 0.26) {
+          const f1 = 1.0 - apexTimer / 0.26;
+          drawCrossFlash(mp, 56 * f1, PAL.EMERALD, false);
+          drawCrossFlash(mp, 38 * f1, '#ffffff', true);
         }
-        const beamW = inAct2 ? Math.max(1.8, 8.8 * (1.0 - p2 * 0.48)) : 3.2;
-        draw3DThickBeam(wp, { x: px, y: py, z: pz }, beamW, PAL.EMERALD, '#ffffff');
-        if (tp && (inAct1 || inAct2)) {
-          draw3DThickBeam({ x: px, y: py, z: pz }, tp, beamW * 1.15, PAL.EMERALD, '#ffffff');
+
+        // 탄성 한계 장력 단계별 색상·굵기·고주파 진동
+        let strandCol = PAL.EMERALD;
+        let coreCol = '#ffffff';
+        let vibAmp = 0.0;
+        let strandW = 2.4;
+        if (inAct3) {
+          // 릴리즈 초고속 수축 단계: 황금/화이트 광채 수축선
+          strandCol = PAL.GOLD;
+          strandW = 3.4;
+          vibAmp = 0.45;
+        } else if (stretch >= 0.96) {
+          // 한계 정지 홀드("쪼기" 피크): 크림슨 <-> 화이트 고속 점멸 + 팽팽한 고주파 진동
+          strandCol = ((Math.floor(apexTimer * 28) & 1) === 0) ? PAL.CRIMSON : '#ffffff';
+          coreCol = '#ffffff';
+          strandW = 3.0;
+          vibAmp = 0.85;
+        } else if (stretch >= 0.85) {
+          strandCol = PAL.GOLD;
+          strandW = 2.8;
+          vibAmp = 0.42;
+        } else if (stretch >= 0.35) {
+          vibAmp = 0.18;
         }
-        if (inAct2 && tp) {
-          drawCrossFlash(wp, Math.max(8, 42 * (1.0 - p2 * 0.70)), PAL.EMERALD, true);
-          drawCrossFlash(tp, Math.max(12, 62 * (1.0 - p2 * 0.50)), PAL.GOLD, false);
-          drawCrossFlash(tp, Math.max(8, 44 * (1.0 - p2 * 0.55)), PAL.EMERALD, true);
-          draw3DDebrisChunks(wp, 97, 18, p2, 54.0, 22.0, PAL.EMERALD, '#ffffff', { x: wp.nx || 0.0, z: wp.nz || 0.0 });
+
+        const vibPhase = apexTimer * 48.0;
+        if (stretch > 0.03) {
+          // 2가닥 팽팽한 탄성 거미줄 스트랜드 (상·하 평행)
+          drawElasticStrand3D(pVis, eVis, 0.72, vibAmp, vibPhase, strandW, strandCol, coreCol);
+          drawElasticStrand3D(pVis, eVis, -0.72, vibAmp, vibPhase + 2.2, strandW * 0.88, strandCol, coreCol);
+        }
+        // 한계 "쪼기" 피크 시 중앙 텐션 글로우 십자 섬광
+        if (inAct2 && stretch >= 0.92) {
+          const tensPulse = 14 + ((Math.floor(apexTimer * 24) & 1) ? 10 : 0);
+          drawCrossFlash(mp, tensPulse, strandCol, true);
+        }
+        // 반대편 공중에서 튕겨 나갔다가 끌려오는 적 실루엣 노드
+        drawElasticEnemyNode(eVis, strandCol);
+      } else if (p4Fade > 0.05) {
+        // Act 3 2단계 (0.38s~1.50s) + Act 4 페이드: 2차 공중 정면 대충돌 폭발!
+        const expT = Math.max(0.0, Math.min(1.0, (act3Elapsed - clashT) / Math.max(0.1, act3Dur - clashT)));
+        const beamLen = 28.0 + expT * 36.0;
+        const beamW = Math.max(1.8, 13.5 * (1.0 - expT * 0.48)) * p4Fade;
+        // 반발 축을 양쪽으로 관통하는 광폭 에메랄드/골드 충격 빔
+        draw3DThickBeam(
+          { x: mp.x - rd.x * beamLen, y: mp.y - rd.y * beamLen, z: mp.z - rd.z * beamLen },
+          { x: mp.x + rd.x * beamLen, y: mp.y + rd.y * beamLen, z: mp.z + rd.z * beamLen },
+          beamW, PAL.EMERALD, '#ffffff'
+        );
+        // 교차 수직 충격 빔
+        draw3DThickBeam(
+          { x: mp.x, y: Math.max(2.0, mp.y - beamLen * 0.55), z: mp.z },
+          { x: mp.x, y: mp.y + beamLen * 0.65, z: mp.z },
+          beamW * 0.65, PAL.GOLD, '#ffffff'
+        );
+        if (inAct3) {
+          drawCrossFlash(mp, Math.max(14, 74 * (1.0 - expT * 0.50)), PAL.GOLD, false);
+          drawCrossFlash(mp, Math.max(10, 56 * (1.0 - expT * 0.55)), PAL.EMERALD, true);
+          draw3DDebrisChunks(mp, 97, 20, expT, 68.0, 28.0, PAL.EMERALD, PAL.GOLD, null);
         }
       }
-      if (apexSceneExtras.isDummy && tp && inAct1) drawDummyNode(tp, accCol, true);
     }
   }
 

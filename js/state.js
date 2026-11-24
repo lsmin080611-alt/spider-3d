@@ -146,11 +146,12 @@ let openingCloudRush = 0.0;
 let openingPoseRadial = 0.0;
 let gameOverReason = '';
 
-// Step 4: 플레이 방식 변혁 6종 증강 Lv.3(★각성) 3.0초 3-Act 불릿타임 3D 컷씬 상태
-const APEX_ACT1_DUR   = 1.05;   // Act 1 (0.00~1.05s): 완전 0% 시간정지 + 70°~80° 3D 시점 선회
-const APEX_ACT2_DUR   = 2.05;   // Act 2 (1.05~2.05s): 매치 컷 앵글 전환 + 0.14x 초슬로우 + 3D 물리 이펙트
-const APEX_TOTAL_DUR  = 3.00;   // Act 3 (2.05~3.00s): 100% 원속 재개 + 드라이브바이 지연 추격 스냅백
-const APEX_ACT2_SCALE = 0.14;   // Act 2 월드 초슬로우 배율
+// Step 4: 플레이 방식 변혁 6종 증강 Lv.3(★각성) 5.0초 4-Act 불릿타임 3D 컷씬 상태
+const APEX_ACT1_DUR   = 0.90;   // Act 1 (0.00~0.90s): [기] 0% 시간정지 · 초근접 망원 포즈 컷인 (탄성 반발은 1차 충돌 직후 즉시 빠른 공중 튕김)
+const APEX_ACT2_DUR   = 2.35;   // Act 2 (0.90~2.35s): [승] 0% 시간정지 · 매치 컷 줌아웃 95°~115° 3D 오빗 (총 2.35s 정지)
+const APEX_ACT3_DUR   = 3.85;   // Act 3 (2.35~3.85s): [전] 0.10x 극저속 슬로우 · 대조 매치 컷 앵글 + 2단계 물리 클라이맥스
+const APEX_TOTAL_DUR  = 5.00;   // Act 4 (3.85~5.00s): [결] 100% 원속 해방 + 드라이브바이 지연 추격 + 광각 스냅백
+const APEX_ACT3_SCALE = 0.10;   // Act 3 월드 극저속 슬로우 배율
 let btnApexTest = null;
 let btnSound = null;
 let apexActive = false;
@@ -161,22 +162,25 @@ let apexCamBlend = 0.0;
 let apexCamX = 0.0, apexCamY = 0.0, apexCamZ = 0.0;
 let apexAnchorX = 0.0, apexAnchorY = 0.0, apexAnchorZ = 0.0;
 let apexStartAng = 0.0;
-let apexOrbitArc = 1.32;
-let apexOrbitRadius = 17.0;
-let apexOrbitRadiusEnd = 14.0;
+let apexOrbitArc = 1.80;
+let apexOrbitRadius = 20.0;
+let apexOrbitRadiusEnd = 15.0;
 let apexStartElev = 0.0;
 let apexEndElev = 0.0;
-let apexTargetRoll = 0.14;
+let apexTargetRoll = 0.16;
 let apexFreezeFov = 192.0;
 let apexReleaseFov = 108.0;
-let apexAct2Cam = null;         // Act 2 매치 컷 전용 카메라 궤도
+let apexAct1Cam = null;         // Act 1 초근접 포즈 컷인 (또는 탄성 반발 즉시 튕김) 카메라 궤도
+let apexAct3Cam = null;         // Act 3 대조 매치 컷 클라이맥스 카메라 궤도
 let apexAct2Started = false;
 let apexAct3Started = false;
+let apexAct4Started = false;
 let apexFlashTimer = 0.0;       // 2프레임 고대비 임팩트 스냅
 let apexHoldCamX = 0.0, apexHoldCamY = 0.0, apexHoldCamZ = 0.0;
 let apexIsTest = false;
 let apexTestLabel = '';
 let apexSceneExtras = null;
+let apexPlayerDrawOff = { x: 0.0, y: 0.0, z: 0.0 }; // 탄성 반발 공중 튕김/수축 전용 시각 오프셋 (실제 물리 좌표 불변)
 let lastElasticWallPt = null;   // 최근 벽 반사 3D 좌표 { x, y, z, nx, nz }
 let lastBungeeAnchorPt = null;  // 최근 고탄성 번지 대아크 앵커 3D 좌표
 let bungeeApexTimer = 0.0;      // 번지 대아크 PERFECT 후 STRIKE 적중 트리거 유지 타이머 (3.4s)

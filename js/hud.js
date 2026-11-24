@@ -161,7 +161,7 @@ function renderHUD(cb, totalSpeed) {
   const lbBlend = Math.max(strikeCamBlend, openingLetterbox, apexLetterbox);
   if (lbBlend > 0.04) {
     const isApexBar = apexLetterbox >= openingLetterbox && apexLetterbox >= strikeCamBlend && apexLetterbox > 0.04;
-    const barH = Math.round(lbBlend * (openingLetterbox > strikeCamBlend && openingLetterbox > apexLetterbox ? 14 : (isApexBar ? 13 : 11)));
+    const barH = Math.round(lbBlend * (openingLetterbox > strikeCamBlend && openingLetterbox > apexLetterbox ? 14 : (isApexBar ? 15 : 11)));
     ctx.fillStyle = PAL.INDIGO_OUTLINE;
     ctx.fillRect(0, 0, LCD_W, barH);
     ctx.fillRect(0, LCD_H - barH, LCD_W, barH);
@@ -176,10 +176,10 @@ function renderHUD(cb, totalSpeed) {
       ctx.font = 'bold 7.5px Consolas, monospace';
       ctx.textAlign = 'left';
       ctx.fillStyle = PAL.GOLD;
-      ctx.fillText(apexIsTest ? ('★ ' + apexTestLabel) : '★ APEX CUT', 6, barH - 3);
+      ctx.fillText(apexIsTest ? ('★ ' + apexTestLabel) : '★ APEX CUT', 6, barH - 4);
       ctx.textAlign = 'right';
       ctx.fillStyle = '#ffffff';
-      ctx.fillText(defBar ? defBar.title : 'AWAKENED', LCD_W - 6, barH - 3);
+      ctx.fillText(defBar ? defBar.title : 'AWAKENED', LCD_W - 6, barH - 4);
       ctx.textAlign = 'left';
     }
   }

@@ -53,11 +53,11 @@ function tick(now) {
   if (!isFrozen && updateOpeningCutscene(rawDt)) {
     // 컷신(ROOF_WAIT / ROOF_WALK / DROP_INTRO) 중에는 본 게임 물리·전투·타이머 스킵
   } else if (!isFrozen && updateApexCutFreeze(rawDt)) {
-    // Step 4 Act 1 (0.00~1.05s): 완전 0% 시간정지 + 70°~80° 3D 시점 선회 (물리·적·타이머 완전 정지)
+    // Step 4 Act 1~2 (0.00~2.35s): 완전 0% 시간정지 · 초근접 포즈 컷인/즉시 반발 + 95°~115° 3D 오빗
   } else if (!isFrozen) {
-    // Step 4 Act 2 (1.05~2.05s): 매치 컷 0.14x 초슬로우 물리, Act 3 (2.05~3.00s): 100% 원속 재개
-    if (isApexAct2Phase()) {
-      dt = rawDt * APEX_ACT2_SCALE;
+    // Step 4 Act 3 (2.35~3.85s): 대조 매치 컷 0.10x 극저속 슬로우 물리, Act 4 (3.85~5.00s): 100% 원속 해방
+    if (isApexSlowPhase()) {
+      dt = rawDt * APEX_ACT3_SCALE;
     }
     const aug = getAugStats();
     simTime += dt;

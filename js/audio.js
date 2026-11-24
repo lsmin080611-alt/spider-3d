@@ -313,7 +313,7 @@ function updateAudio(rawDt) {
     bgmStepTimerMs = stepDurMs;
     bgmGateTimerMs = freq > 0 ? stepDurMs * 0.56 : 0;
     // Gentle background volume (0.016) so SFX clearly pop over the music
-    const bgmGain = (typeof isApexAct2Phase === 'function' && isApexAct2Phase()) ? 0.008 : 0.016;
+    const bgmGain = (typeof isApexSlowPhase === 'function' && isApexSlowPhase()) ? 0.008 : 0.016;
     setBuzzerTone(freq, freq > 0 ? bgmGain : 0, 1450);
   }
 }
